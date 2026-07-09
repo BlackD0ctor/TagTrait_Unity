@@ -1,0 +1,587 @@
+유니티 TagTrait 시스템 개발 단계 1 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 1
+- 단계 제목: Enum과 데이터 구조
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0 완료 기록
+- 본 프롬프트는 위 기준 문서와 함께 사용한다.
+- 기준 충돌 시 다음 우선순위를 따른다.
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌이 발견되면 임의로 해결하지 말고 작업을 중단한 뒤 충돌 내용, 영향 범위 및 권장안을 보고한다.
+
+1. AI 역할
+- Unity 6 환경의 Runtime 데이터 모델과 EditMode 테스트를 작성하는 Unity C# 개발자로 작업한다.
+- 현재 단계에서는 TagTrait 시스템의 enum, 원본 태그 정의, 런타임 태그 상태 및 최소 Trait 기반 타입만 구현한다.
+- 태그 조회, 추가, 제거, Trait 실행, 이벤트 및 시간 처리 로직은 구현하지 않는다.
+- Unity Editor 내부 컴파일과 Test Runner 실행은 수행했다고 간주하지 않는다.
+- 실제 컴파일과 테스트 실행은 사용자가 Unity에서 수행한다.
+
+2. 확정 개발 환경
+- Unity 버전: Unity 6.0 LTS (6000.0.68f1)
+- API Compatibility Level: .NET Standard 2.1
+- Unity Test Framework: 1.6.0
+- 최소 지원 플랫폼: Windows PC
+- 최종 확장 고려 플랫폼: 모바일
+- 빌드 백엔드 고려 사항: IL2CPP
+- Runtime Assembly:
+-- (TagTraitSystem.Runtime)
+- EditMode Test Assembly:
+-- (TagTraitSystem.Tests.EditMode)
+
+3. 이전 단계 전제
+- 다음 경로와 Assembly Definition이 존재하고 사용자의 Unity 검증을 통과한 것으로 전제한다.
+-- (Assets/TagTraitSystem/Runtime/TagTraitSystem.Runtime.asmdef)
+-- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+- EditMode Test Assembly는 Runtime Assembly를 참조한다.
+- 위 전제가 충족되지 않았으면 단계 1 구현을 시작하지 말고 누락 내용을 보고한다.
+
+4. 현재 단계 목표
+- TagID를 구현한다.
+- TagCategory를 구현한다.
+- StackPolicy를 구현한다.
+- TagChangeReason을 구현한다.
+- ExclusiveGroup을 구현한다.
+- 최소 TagTraitSO 추상 클래스를 구현한다.
+- TagDefinition ScriptableObject를 구현한다.
+- TagDefinition에 태그별 최대 스택 설정 원본인 MaxStackCount 데이터를 추가한다.
+- TagInstance 런타임 상태 클래스를 구현한다.
+- Runtime Assembly의 internal 멤버를 EditMode Test Assembly에서 검증할 수 있도록 InternalsVisibleTo를 설정한다.
+- 각 데이터 구조의 기본값, 고정 enum 값, 참조 보존 및 초기 상태를 검증하는 EditMode 테스트 코드를 작성한다.
+
+5. AI 작업 완료 기준
+- 지정된 Runtime 파일이 생성 또는 수정되어 있다.
+- 지정된 EditMode 테스트 파일이 생성되어 있다.
+- 각 enum 숫자값이 명시적으로 고정되어 있다.
+- TagDefinition의 직렬화 필드와 읽기 전용 프로퍼티가 요구사항과 일치한다.
+- MaxStackCount의 기본값이 1이며 TagDefinition에만 저장된다.
+- TagInstance의 두 생성자와 초기 상태가 요구사항과 일치한다.
+- TagTraitSO가 단계 1 범위의 최소 추상 타입으로 구현되어 있다.
+- 테스트용 Unity Object가 TearDown에서 정리되도록 작성되어 있다.
+- 실제 Unity 컴파일과 테스트는 미실행 상태로 명확히 보고한다.
+
+6. 개발 단계 최종 완료 기준
+- 사용자가 Unity Editor에서 프로젝트 컴파일 성공을 확인한다.
+- 사용자가 단계 1 EditMode 테스트 전체 통과를 확인한다.
+- 사용자가 기존 단계 0 환경 테스트의 회귀 통과를 확인한다.
+- Assembly 참조 오류와 직렬화 오류가 없음을 확인한다.
+- AI 작업 완료만으로 개발 단계 1이 최종 완료된 것으로 판정하지 않는다.
+
+7. 생성할 Runtime 폴더 및 파일
+
+7.1. 폴더
+- 다음 폴더를 생성한다.
+-- (Assets/TagTraitSystem/Runtime/Core)
+-- (Assets/TagTraitSystem/Runtime/Definitions)
+-- (Assets/TagTraitSystem/Runtime/Traits)
+
+7.2. 파일
+- 다음 파일을 생성한다.
+-- (Assets/TagTraitSystem/Runtime/Core/TagID.cs)
+-- (Assets/TagTraitSystem/Runtime/Core/TagCategory.cs)
+-- (Assets/TagTraitSystem/Runtime/Core/StackPolicy.cs)
+-- (Assets/TagTraitSystem/Runtime/Core/TagChangeReason.cs)
+-- (Assets/TagTraitSystem/Runtime/Core/ExclusiveGroup.cs)
+-- (Assets/TagTraitSystem/Runtime/Core/TagInstance.cs)
+-- (Assets/TagTraitSystem/Runtime/Definitions/TagDefinition.cs)
+-- (Assets/TagTraitSystem/Runtime/Traits/TagTraitSO.cs)
+-- (Assets/TagTraitSystem/Runtime/AssemblyInfo.cs)
+
+7.3. 네임스페이스
+- Core 타입:
+-- (TagTraitSystem.Runtime.Core)
+- TagDefinition:
+-- (TagTraitSystem.Runtime.Definitions)
+- TagTraitSO:
+-- (TagTraitSystem.Runtime.Traits)
+
+8. Enum 구현
+
+8.1. TagID
+- public enum으로 구현한다.
+- 값은 다음과 같이 정확히 고정한다.
+-- (None = 0)
+-- (TestAlpha = 1)
+-- (TestBeta = 2)
+-- (TestGamma = 3)
+- TestAlpha, TestBeta, TestGamma가 테스트용 임시 ID임을 한글 코드 주석으로 표시한다.
+- 서로 다른 enum 이름에 같은 숫자값을 지정하지 않는다.
+- 실제 프로젝트 태그를 임의로 추가하지 않는다.
+
+8.2. TagCategory
+- public enum으로 구현한다.
+- 값은 다음과 같이 정확히 고정한다.
+-- (None = 0)
+-- (Keyword = 1)
+-- (Status = 2)
+- 키워드 여부는 Category의 Keyword 값으로 판정한다.
+- Trait Null 여부는 키워드 판정에 사용하지 않는다.
+- 추가 카테고리를 임의로 만들지 않는다.
+
+8.3. StackPolicy
+- public enum으로 구현한다.
+- 값은 다음과 같이 정확히 고정한다.
+-- (None = 0)
+-- (MaxDuration = 1)
+-- (Refresh = 2)
+-- (StackCount = 3)
+- Extend를 추가하지 않는다.
+- 현재 단계에서 정책 동작을 구현하지 않는다.
+
+8.4. TagChangeReason
+- public enum으로 구현한다.
+- 값은 다음과 같이 정확히 고정한다.
+-- (Added = 0)
+-- (Removed = 1)
+-- (DurationRefreshed = 2)
+-- (DurationExtendedToMax = 3)
+-- (StackIncreased = 4)
+-- (StackDecreased = 5)
+-- (ChangedToPermanent = 6)
+-- (Expired = 7)
+- 현재 단계에서 이벤트를 구현하지 않는다.
+
+8.5. ExclusiveGroup
+- public enum으로 구현한다.
+- 값은 다음과 같이 고정한다.
+-- (None = 0)
+- 그룹 식별용이며 우선순위를 의미하지 않는다.
+- 현재 단계에서 추가 그룹이나 처리 알고리즘을 구현하지 않는다.
+
+9. 최소 TagTraitSO 구현
+
+9.1. 클래스 선언
+- 다음 형태의 public abstract class로 구현한다.
+-- (public abstract class TagTraitSO : ScriptableObject)
+
+9.2. 현재 단계 동작
+- 메서드를 선언하지 않는다.
+- ITagTrait을 구현하지 않는다.
+- OnAdd, OnActivate, OnRemove를 선언하지 않는다.
+- CreateAssetMenu를 추가하지 않는다.
+- 런타임 상태 필드를 추가하지 않는다.
+- 단계 5에서 생명주기 계약을 추가할 수 있는 최소 기반 타입으로만 구현한다.
+
+9.3. 문서화
+- 클래스에 영어 XML 문서 주석을 작성한다.
+- 여러 오브젝트가 공유할 ScriptableObject 기반 Trait의 기반 타입이라는 의미만 설명한다.
+- 아직 지원하지 않는 생명주기 기능을 구현된 것처럼 설명하지 않는다.
+
+10. TagDefinition 구현
+
+10.1. 클래스 선언
+- ScriptableObject를 상속하는 public sealed class로 구현한다.
+- CreateAssetMenu를 다음 값으로 설정한다.
+-- fileName: (NewTagDefinition)
+-- menuName: (TagTraitSystem/Tag Definition)
+-- order: (0)
+
+10.2. 직렬화 필드
+- 다음 필드를 정확한 이름과 형식으로 구현한다.
+-- ([SerializeField] private TagID tagID;)
+-- ([SerializeField] private string tagName = string.Empty;)
+-- ([SerializeField] private TagCategory category;)
+-- ([SerializeField] private TagTraitSO trait;)
+-- ([SerializeField] private StackPolicy stackPolicy;)
+-- ([SerializeField] private int maxStackCount = 1;)
+-- ([SerializeField] private ExclusiveGroup exclusiveGroup;)
+-- ([SerializeField] private int priority;)
+-- ([SerializeField] private bool isSaveable;)
+- private 필드는 별도 접두어 없이 camelCase를 사용한다.
+- 불필요한 public setter를 제공하지 않는다.
+- Unity 직렬화에 필요하지 않은 추가 필드를 만들지 않는다.
+
+10.3. 읽기 전용 프로퍼티
+- 다음 프로퍼티를 정확한 이름으로 구현한다.
+-- (public TagID TagID => tagID;)
+-- (public string TagName => tagName;)
+-- (public TagCategory Category => category;)
+-- (public TagTraitSO Trait => trait;)
+-- (public StackPolicy StackPolicy => stackPolicy;)
+-- (public int MaxStackCount => maxStackCount;)
+-- (public ExclusiveGroup ExclusiveGroup => exclusiveGroup;)
+-- (public int Priority => priority;)
+-- (public bool IsSaveable => isSaveable;)
+-- (public bool IsKeywordTag => category == TagCategory.Keyword;)
+
+10.4. 책임
+- TagDefinition은 원본 설정 데이터만 저장한다.
+- MaxStackCount는 태그별 최대 스택 설정의 원본이며 기본값은 1이다.
+- MaxStackCount는 StackPolicy.StackCount에서만 Runtime 동작에 사용하고 다른 정책에서는 설정값만 보존한다.
+- MaxStackCount == 1은 유효한 설정이다.
+- TagInstance에 최대 스택 수를 별도 필드로 복제하지 않는다.
+- 오브젝트별 최대치 또는 Runtime override 구조를 구현하지 않는다.
+- 런타임 시간, 남은 시간, 현재 스택 수 및 유한성 상태를 저장하지 않는다.
+- 여러 오브젝트가 같은 TagDefinition을 공유할 수 있어야 한다.
+- IsKeywordTag는 Category만 확인한다.
+- Trait Null 여부를 IsKeywordTag 판정에 사용하지 않는다.
+
+10.5. 현재 단계에서 구현하지 않을 검증
+- public IsValid 프로퍼티를 추가하지 않는다.
+- public Validate 메서드를 추가하지 않는다.
+- OnValidate를 구현하지 않는다.
+- 프로젝트 전체 중복 ID 검색을 구현하지 않는다.
+- 빈 이름, Keyword-Trait 조합 및 비Keyword-Trait Null을 현재 단계 Runtime 코드에서 차단하지 않는다.
+- MaxStackCount가 1 미만인지 현재 단계 Runtime 코드에서 차단하거나 보정하지 않는다.
+- MaxStackCount == 1을 오류로 처리하지 않는다.
+- 위 데이터 유효성 처리는 이후 API 및 Editor Validator 단계에서 구현한다.
+
+10.6. 문서화
+- public 클래스와 public 프로퍼티에 필요한 영어 XML 문서 주석을 작성한다.
+- 일반 구현 설명이 필요한 경우 한글 코드 주석을 사용할 수 있다.
+- 보류 필드인 ExclusiveGroup, Priority, IsSaveable이 현재 Runtime 동작에 사용되지 않는다는 점을 과도한 주석으로 반복하지 않는다.
+
+11. TagInstance 구현
+
+11.1. 클래스 선언
+- 다음 형태로 구현한다.
+-- (public sealed class TagInstance)
+
+11.2. 프로퍼티
+- 다음 프로퍼티를 구현한다.
+-- (public TagDefinition Definition { get; })
+-- (public float Duration { get; private set; })
+-- (public float RemainingTime { get; private set; })
+-- (public int StackCount { get; private set; })
+-- (public bool IsPerishable { get; private set; })
+- 외부에서 상태를 임의로 변경할 수 있는 public setter를 제공하지 않는다.
+- 현재 단계에서는 상태 변경용 public 또는 internal 메서드를 추가하지 않는다.
+
+11.3. 영구 태그 생성자
+- 다음 시그니처로 구현한다.
+-- (internal TagInstance(TagDefinition definition))
+- definition이 Null이면 (ArgumentNullException)을 발생시킨다.
+- 정상 생성 시 초기값은 다음과 같다.
+-- Definition = 전달된 definition
+-- Duration = 0f
+-- RemainingTime = 0f
+-- StackCount = 1
+-- IsPerishable = false
+
+11.4. 소멸 태그 생성자
+- 다음 시그니처로 구현한다.
+-- (internal TagInstance(TagDefinition definition, float duration))
+- definition이 Null이면 (ArgumentNullException)을 발생시킨다.
+- 정상 생성 시 초기값은 다음과 같다.
+-- Definition = 전달된 definition
+-- Duration = 전달된 duration
+-- RemainingTime = 전달된 duration
+-- StackCount = 1
+-- IsPerishable = true
+
+11.5. 시간값 책임
+- 단계 1에서는 duration을 정규화하지 않는다.
+- 반올림, 최소 0.1초 보정, NaN 및 Infinity 검증을 구현하지 않는다.
+- TagInstance는 이미 검증 및 정규화되었다고 가정한 값을 저장하는 데이터 객체로 둔다.
+- 시간 정규화는 개발 단계 6에서 구현한다.
+
+11.6. 문서화
+- 클래스와 public 프로퍼티에 영어 XML 문서 주석을 작성한다.
+- 생성자가 internal인 이유를 필요 시 한글 주석으로 간단히 설명할 수 있다.
+- TagContainer가 아직 존재하지 않으므로 미래 기능을 가정한 상태 변경 메서드를 추가하지 않는다.
+
+12. InternalsVisibleTo 설정
+
+12.1. 파일
+- (Assets/TagTraitSystem/Runtime/AssemblyInfo.cs)
+
+12.2. 내용
+- Runtime internal 멤버를 EditMode Test Assembly에서 사용할 수 있도록 다음 특성을 추가한다.
+-- ([assembly: InternalsVisibleTo("TagTraitSystem.Tests.EditMode")])
+- 필요한 using을 명시적으로 작성한다.
+- 다른 Assembly에 대한 InternalsVisibleTo를 추가하지 않는다.
+- strong-name public key를 임의로 추가하지 않는다.
+
+13. 테스트 파일
+
+13.1. 생성할 파일
+- 다음 파일을 생성한다.
+-- (Assets/TagTraitSystem/Tests/EditMode/EnumDefinitionTests.cs)
+-- (Assets/TagTraitSystem/Tests/EditMode/TagDefinitionTests.cs)
+-- (Assets/TagTraitSystem/Tests/EditMode/TagInstanceTests.cs)
+-- (Assets/TagTraitSystem/Tests/EditMode/TestTagTraitSO.cs)
+
+13.2. 테스트 네임스페이스
+- 모든 테스트 파일은 다음 네임스페이스를 사용한다.
+-- (TagTraitSystem.Tests.EditMode)
+
+14. TestTagTraitSO 구현
+- TagTraitSO를 상속하는 테스트 전용 concrete class로 작성한다.
+- Runtime Assembly에 포함하지 않는다.
+- 메서드나 상태를 추가하지 않는다.
+- TagDefinition의 Trait 필드 참조 보존 테스트에만 사용한다.
+- CreateAssetMenu를 추가하지 않는다.
+
+15. EnumDefinitionTests
+
+15.1. 목적
+- enum 숫자값이 설계와 정확히 일치하는지 고정한다.
+
+15.2. 필수 테스트
+- (TagID_Values_AreFixed)
+-- None이 0인지 확인
+-- TestAlpha가 1인지 확인
+-- TestBeta가 2인지 확인
+-- TestGamma가 3인지 확인
+- (TagCategory_Values_AreFixed)
+-- None이 0인지 확인
+-- Keyword가 1인지 확인
+-- Status가 2인지 확인
+- (StackPolicy_Values_AreFixed)
+-- None이 0인지 확인
+-- MaxDuration이 1인지 확인
+-- Refresh가 2인지 확인
+-- StackCount가 3인지 확인
+- (TagChangeReason_Values_AreFixed)
+-- 모든 고정 숫자값 확인
+- (ExclusiveGroup_None_IsZero)
+-- None이 0인지 확인
+- enum 테스트는 실제 enum 값을 int로 캐스팅하여 검증한다.
+- 현재 정의된 enum 멤버 개수까지 강제하는 테스트는 작성하지 않는다.
+-- 이후 실제 요구로 enum 항목이 추가될 수 있기 때문이다.
+
+16. TagDefinitionTests
+
+16.1. 테스트 객체 생성
+- 각 테스트에서 (ScriptableObject.CreateInstance<TagDefinition>())를 사용한다.
+- Trait 테스트가 필요하면 (ScriptableObject.CreateInstance<TestTagTraitSO>())를 사용한다.
+- 생성한 Unity Object는 필드에 보관한다.
+- ([TearDown])에서 (Object.DestroyImmediate)를 사용하여 정리한다.
+
+16.2. private 직렬화 필드 설정
+- UnityEditor의 (SerializedObject)와 (SerializedProperty)를 사용한다.
+- Runtime에 테스트용 setter, 생성자 또는 초기화 API를 추가하지 않는다.
+- 프로퍼티 이름 문자열은 실제 필드명과 정확히 일치해야 한다.
+- (ApplyModifiedPropertiesWithoutUndo())를 사용한다.
+
+16.3. 필수 테스트
+- (TagDefinition_DefaultValues_AreExpected)
+-- TagID.None
+-- 빈 문자열 TagName
+-- TagCategory.None
+-- Trait Null
+-- StackPolicy.None
+-- MaxStackCount 1
+-- ExclusiveGroup.None
+-- Priority 0
+-- IsSaveable false
+-- IsKeywordTag false
+- (TagDefinition_WhenSerializedFieldsAreSet_PreservesValues)
+-- 모든 직렬화 필드를 설정
+-- MaxStackCount를 3 이상의 값으로 설정
+-- 모든 읽기 전용 프로퍼티가 같은 값을 반환하는지 확인
+- (TagDefinition_WhenCreated_HasDefaultMaxStackCountOfOne)
+-- 새 TagDefinition의 MaxStackCount가 1인지 확인
+- (TagDefinition_WhenMaxStackCountIsSerialized_ReturnsConfiguredValue)
+-- SerializedObject로 maxStackCount를 설정
+-- MaxStackCount가 설정값을 반환하는지 확인
+- (IsKeywordTag_WhenCategoryIsKeyword_ReturnsTrue)
+-- Trait Null 여부와 관계없이 Category가 Keyword이면 true
+- (IsKeywordTag_WhenCategoryIsNotKeywordAndTraitIsNull_ReturnsFalse)
+-- Category가 Status이고 Trait이 Null이어도 false
+- (IsKeywordTag_WhenKeywordHasTrait_ReturnsTrue)
+-- 잘못된 데이터 조합이라도 판정 자체는 Category만 사용
+-- 이 단계에서는 추가 차단 로직을 테스트하지 않음
+
+17. TagInstanceTests
+
+17.1. 테스트 객체 생성 및 정리
+- TagDefinition을 (ScriptableObject.CreateInstance<TagDefinition>())로 생성한다.
+- ([TearDown])에서 (Object.DestroyImmediate)를 사용하여 정리한다.
+
+17.2. 필수 테스트
+- (TagInstance_WhenPermanentCreated_InitializesExpectedState)
+-- Definition 참조 보존
+-- Duration 0f
+-- RemainingTime 0f
+-- StackCount 1
+-- IsPerishable false
+- (TagInstance_WhenPerishableCreated_InitializesExpectedState)
+-- Definition 참조 보존
+-- 전달한 duration이 Duration에 그대로 저장
+-- 전달한 duration이 RemainingTime에 그대로 저장
+-- StackCount 1
+-- IsPerishable true
+- (TagInstance_WhenDurationHasUnnormalizedValue_PreservesInput)
+-- 예: 1.25f를 전달
+-- Duration과 RemainingTime이 1.25f인지 확인
+-- 단계 1에서 시간 정규화를 하지 않는다는 경계를 검증
+- (TagInstance_WhenPermanentDefinitionIsNull_ThrowsArgumentNullException)
+- (TagInstance_WhenPerishableDefinitionIsNull_ThrowsArgumentNullException)
+
+17.3. 테스트하지 않을 항목
+- private setter를 Reflection으로 검사하지 않는다.
+- sealed 여부를 Reflection으로 검사하지 않는다.
+- 아직 존재하지 않는 상태 변경 메서드를 가정하지 않는다.
+
+18. 코딩 규칙
+- private 필드는 별도 접두어 없이 camelCase를 사용한다.
+- 중괄호는 BSD 스타일을 사용한다.
+- (var)를 사용하지 않는다.
+- XML 문서 주석은 영어로 작성한다.
+- 일반 코드 주석은 한글로 작성한다.
+- 로그는 현재 단계에서 추가하지 않는다.
+- 테스트 메서드 이름은 영어로 작성한다.
+- 기능 구간이 명확한 경우에만 (#region)을 사용한다.
+- Nullable Reference Type을 도입하지 않는다.
+- LINQ는 테스트의 단순 검증을 제외하고 불필요하게 사용하지 않는다.
+
+19. 기존 파일 처리
+- 작업 전 단계 0 파일과 현재 Runtime/Test 폴더를 확인한다.
+- 동일 이름의 파일이 이미 있으면 중복 생성하지 않는다.
+- 기존 내용이 본 프롬프트와 다르면 즉시 덮어쓰지 않는다.
+- 차이점, 영향 범위 및 권장 수정안을 보고한다.
+- (TagTraitSystemEnvironmentTests.cs)는 삭제하거나 변경하지 않는다.
+- 기존 Assembly Definition을 현재 단계 요구 없이 수정하지 않는다.
+- Runtime Assembly의 Root Namespace와 Test Assembly 참조 방향을 유지한다.
+
+20. 현재 단계 비범위
+- TagContainer
+- Dictionary 또는 태그 보유 컬렉션
+- TagScan, TagCheck, TagANDCheck, TagORCheck, TryGetTag
+- TagAdd, TagSub, PerishableTagAdd, TagActivate
+- ITagTrait
+- TraitContext
+- OnAdd, OnActivate, OnRemove
+- TagChangeEventData
+- OnTagAdded, OnTagRemoved, OnTagUpdated
+- Tick 및 Update
+- 시간값 정규화
+- StackPolicy 실제 처리
+- 최대 스택 도달 시 추가 차단
+- MaxStackCount 유효성 검사와 자동 보정
+- 오브젝트별 최대 스택 override
+- TagInstance의 최대 스택 복제 필드
+- TagInstance 상태 변경 메서드
+- OnValidate
+- Editor Validator
+- TagDiagnostics 및 로그
+- Keyword-Trait 잘못된 조합의 추가 차단
+- 비Keyword Trait Null의 추가 차단
+- 프로젝트 전체 중복 ID 및 이름 검색
+- PlayMode 테스트
+- Sample 코드, 에셋 또는 Scene
+
+21. 금지 사항
+- 단계 2 이후의 기능을 미리 구현하지 않는다.
+- TagDefinition에 현재 StackCount 같은 런타임 상태를 저장하지 않는다.
+- TagDefinition의 MaxStackCount는 원본 설정 데이터이므로 런타임 상태로 오인하여 제거하지 않는다.
+- TagInstance에 MaxStackCount를 별도 필드나 복제 상태로 추가하지 않는다.
+- 오브젝트별 최대치 또는 Runtime override 기능을 추가하지 않는다.
+- TagTraitSO에 오브젝트별 런타임 상태를 저장하지 않는다.
+- TagInstance 상태에 public setter를 추가하지 않는다.
+- TagInstance 생성자를 public으로 변경하지 않는다.
+- Runtime에 테스트 전용 public API를 추가하지 않는다.
+- IsValid 또는 Validate 공개 API를 임의로 추가하지 않는다.
+- 시간값을 단계 1에서 정규화하지 않는다.
+- Keyword 여부를 Trait Null로 판정하지 않는다.
+- enum 값을 암시적 순서에 맡기지 않고 숫자값을 명시한다.
+- 기존 테스트를 삭제하거나 기대값을 완화하지 않는다.
+- 실제 테스트를 실행하지 않고 통과했다고 보고하지 않는다.
+- Unity 컴파일을 확인하지 않고 오류가 없다고 단정하지 않는다.
+
+22. 작업 절차
+- 1. 단계 0 완료 상태와 Assembly Definition을 확인한다.
+- 2. 기존 Runtime 및 Test 파일 충돌 여부를 확인한다.
+- 3. Core, Definitions, Traits 폴더를 생성한다.
+- 4. enum 파일을 작성한다.
+- 5. 최소 TagTraitSO를 작성한다.
+- 6. TagDefinition을 작성한다.
+- 7. TagInstance를 작성한다.
+- 8. AssemblyInfo.cs에 InternalsVisibleTo를 추가한다.
+- 9. TestTagTraitSO를 작성한다.
+- 10. enum 테스트를 작성한다.
+- 11. TagDefinition 테스트를 작성한다.
+- 12. TagInstance 테스트를 작성한다.
+- 13. 전체 변경 파일을 정적으로 검토한다.
+- 14. 현재 단계 밖 기능이 포함되지 않았는지 확인한다.
+- 15. 실제 Unity 컴파일과 테스트를 실행하지 않았음을 명시한다.
+- 16. 사용자가 Unity에서 수행해야 할 검증 절차를 보고한다.
+
+23. 작업 중단 및 보고 조건
+- 단계 0 Assembly 또는 참조 구조가 확인되지 않는 경우
+- 동일 이름의 기존 타입이 다른 네임스페이스에 존재하는 경우
+- 기존 enum 숫자값이 본 프롬프트와 충돌하는 경우
+- 기존 TagDefinition 또는 TagInstance 공개 API와 파괴적 충돌이 있는 경우
+- Runtime Assembly가 InternalsVisibleTo를 사용할 수 없는 서명 설정인 경우
+- SerializedObject를 사용하기 위해 Test Assembly 설정 변경이 필요한 경우
+- 현재 단계 밖의 코드 수정이 필수인 경우
+- 위 상황에서는 임의로 해결하지 말고 문제, 선택지, 권장안 및 영향 범위를 보고한다.
+
+24. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 1 - Enum과 데이터 구조
+
+(생성한 폴더)
+- 경로 목록
+
+(생성한 파일)
+- 경로 목록
+
+(수정한 파일)
+- 경로 목록
+- 수정 이유
+
+(구현한 타입)
+- enum 목록
+- TagTraitSO
+- TagDefinition
+- TagInstance
+
+(추가된 공개 API)
+- 타입별 공개 프로퍼티
+- TagDefinition.MaxStackCount
+- CreateAssetMenu 설정
+
+(내부 API)
+- TagInstance 생성자
+- InternalsVisibleTo 설정
+
+(작성한 테스트)
+- 파일명
+- 테스트 클래스
+- 테스트 메서드 목록
+
+(정적 검토 결과)
+- enum 숫자값
+- 네임스페이스
+- 접근 제한자
+- MaxStackCount 기본값과 원본 위치
+- TagInstance에 최대치 복제 상태가 없는지
+- Runtime 상태 분리
+- 단계 범위 초과 여부
+
+(기존 파일과의 충돌)
+- 없음 또는 상세 내용
+
+(Unity 사용자 확인 필요)
+- Unity Editor에서 컴파일 확인
+- 기존 단계 0 환경 테스트 실행
+- 단계 1 EditMode 테스트 전체 실행
+- ScriptableObject 직렬화 프로퍼티 접근 오류 확인
+- AssemblyInfo와 internal 생성자 접근 확인
+- Test Runner 결과 확인
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(설계 변경)
+- 없음 또는 상세 내용
+
+(남은 문제)
+- 없음 또는 상세 내용
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 사용자 검증 통과 후: 개발 단계 2 진행 가능

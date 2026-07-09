@@ -1,0 +1,182 @@
+유니티 TagTrait 시스템 개발 단계 11-1 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 11-1
+- 단계 제목: 소멸 태그 StackCount Add/Sub
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 11-1 구현 프롬프트
+-- 개발 단계 0~10 완료 기록
+-- 개발 단계 11-1 구현 결과 보고
+
+1. 검수 목적
+- 동일 Duration 순차 스택 모델이 유지되는지 확인한다.
+- 소멸 스택 증가·감소 성공 시 RemainingTime이 Duration으로 초기화되는지 확인한다.
+- MaxStackCount, duration 일치, 이벤트, Trait, 재진입 계약을 확인한다.
+- Tick 중 변경 추적과 처리 순서 제한사항이 정확히 반영되었는지 확인한다.
+- 다중 스택 Tick이 조기 구현되지 않았는지 확인한다.
+
+2. 검수 대상
+- Runtime/Core/TagInstance.cs
+- Runtime/Components/TagContainer.cs
+- Tests/EditMode/TagContainerPerishableStackCountMutationTests.cs
+- 단계 11-1에서 수정한 기존 테스트
+- 구현 결과 보고
+
+3. 시간 모델 검수
+- 모든 스택이 동일 Duration을 사용하는가
+- RemainingTime이 현재 활성 스택의 남은 시간인가
+- StackCount가 현재 활성 스택을 포함하는가
+- 스택별 List/Queue가 추가되지 않았는가
+- 스택별 Source나 duration이 저장되지 않았는가
+
+4. duration 일치 검수
+- 새 입력을 기존 단계 규칙으로 정규화하는가
+- 최대치 미만에서 정규화 duration과 기존 Duration을 정확 비교하는가
+- 불일치 시 Error/false/무변경인가
+- raw 값이 달라도 정규화 결과가 같으면 허용하는가
+- 최대치 도달이면 duration 불일치 검사 전에 no-op하는가
+
+5. 소멸 스택 증가 검수
+- 호출당 한 스택 증가인가
+- RemainingTime = Duration인가
+- Duration과 Instance 참조를 유지하는가
+- 새 Instance나 Dictionary 교체가 없는가
+- true인가
+- OnAdd/OnRemove/OnActivate가 없는가
+
+6. 최대치 검수
+- StackCount >= MaxStackCount에서 false인가
+- RemainingTime을 초기화하지 않는가
+- 이벤트와 로그가 없는가
+- 초과 상태를 자동 축소하지 않는가
+- invalid maximum만 Error인가
+
+7. StackIncreased 이벤트 검수
+- Updated 한 번인가
+- Reason이 StackIncreased인가
+- Source가 보존되는가
+- PreviousRemainingTime이 초기화 전 값인가
+- 콜백에서 증가된 StackCount와 RemainingTime == Duration이 보이는가
+- Added/Removed가 없는가
+
+8. 소멸 TagSub 중간 감소 검수
+- StackCount > 1에서 현재 활성 스택을 제거하는가
+- StackCount를 1 감소하는가
+- RemainingTime = Duration인가
+- 같은 Instance가 남는가
+- OnRemove가 없는가
+- StackDecreased Updated 한 번인가
+
+9. 마지막 제거 검수
+- StackCount == 1에서 완전 제거인가
+- RemainingTime을 초기화하지 않는가
+- StackCount를 0으로 만들지 않는가
+- Removed만 발생하는가
+- StackDecreased가 없는가
+
+10. 비정상 데이터 검수
+- 다중 스택이어도 한 번에 제거하는가
+- OnRemove를 생략하는가
+- Removed 한 번인가
+- Updated/StackDecreased가 없는가
+- 제거 전 상태를 보정하지 않는가
+
+11. Tick 중 변경 검수
+- 성공한 소멸 스택 증감에서 tickModifiedTagIDs에 기록하는가
+- 처리 전이면 현재 Tick을 건너뛰는가
+- 처리 후이면 이미 소진된 스택을 복구하지 않는가
+- 실패/no-op에서는 기록하지 않는가
+- 성공 후 RemainingTime이 Duration인가
+
+12. 처리 순서 제한사항 검수
+- 처리 전후에 따라 최종 StackCount가 달라질 수 있음을 숨기지 않았는가
+- Dictionary 순서를 공개 계약으로 보장하지 않는가
+- 순서 독립성을 허위로 주장하지 않는가
+- 기존 즉시 변경 구조를 유지하는가
+
+13. 향후 필수 재설계 기록 검수
+- 완료 보고에 “StackCount Tick 처리 구조 재설계 필요”가 있는가
+- 보류 기능 또는 리팩터링 전 별도 설계 필요성이 명시되었는가
+- 지연 큐, 콜백 단계 분리, 트랜잭션 구조가 후보로 기록되었는가
+- 현재 단계에서 조기 구현되지 않았는가
+
+14. 재진입 검수
+- Updated 종료까지 processingTagIDs가 유지되는가
+- 같은 ID 변경이 차단되는가
+- 다른 ID 변경이 허용되는가
+- 예외와 실패 후 가드가 해제되는가
+
+15. 정책 분리 검수
+- None은 false
+- Refresh는 단계 8
+- MaxDuration은 단계 9
+- StackCount만 증가+시간 초기화
+- DurationRefreshed 이벤트를 함께 발생시키지 않는가
+
+16. 테스트 검수
+- duration 일치/불일치
+- 정규화 동일값
+- 증가와 RemainingTime 초기화
+- 최대치 no-op
+- 감소와 RemainingTime 초기화
+- 마지막 제거
+- 비정상 복구
+- Tick 전/후 변경
+- 실패 시 tickModified 미기록
+- 재진입과 구독자 예외
+- TearDown 정리
+
+17. 범위 초과 검수
+- 다중 스택 Tick 산술
+- 큰 Tick 다중 소진
+- 초과시간 전달
+- 스택별 duration 저장
+- Tick 변경 큐
+- 트랜잭션
+- 오브젝트별 최대치
+- Editor Validator
+- TagDiagnostics 완성
+- 조기 구현 시 영향 범위를 보고한다.
+
+18. 차단 문제
+- 증가·감소 성공에서 RemainingTime 유지
+- 최대치 no-op에서 시간 초기화
+- 서로 다른 duration 허용
+- 하나의 API에서 StackIncreased와 DurationRefreshed 동시 발생
+- 중간 감소에서 OnRemove 호출
+- 마지막 제거에서 StackCount 0
+- 실패인데 tickModified 기록
+- 처리 순서 독립성 허위 보장
+- 기술 부채 기록 누락
+- 단계 11-2 조기 구현
+
+19. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 11-1
+
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+
+(시간 모델 검수)
+(소멸 스택 증가 검수)
+(최대치 및 duration 검수)
+(소멸 스택 감소 검수)
+(마지막 제거 검수)
+(비정상 복구 검수)
+(Tick 연동 검수)
+(처리 순서 제한사항)
+(향후 필수 재설계 기록)
+(재진입 검수)
+(테스트 검수)
+(기존 기능 회귀)
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

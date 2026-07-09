@@ -1,0 +1,641 @@
+유니티 TagTrait 시스템 개발 단계 14 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 14
+- 단계 제목: 초기 버전 0.1.0 마감, 문서화 및 최종 검증 준비
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- 수정된 (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0~13-2 완료 기록
+- 기준 충돌 우선순위:
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: 수정된 AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌 발견 시 임의로 API, enum 값, 직렬화 필드 또는 테스트 계약을 변경하지 말고 문제, 영향 범위 및 권장안을 보고한다.
+
+1. 현재 단계 목표
+- TagTrait 시스템 초기 기능 버전을 0.1.0으로 정리한다.
+- 새로운 기능을 추가하지 않는다.
+- 공개 API, enum 숫자값, 직렬화 계약을 0.1.0 기준으로 문서화한다.
+- 기능 변화가 없는 안전한 코드 정리만 수행한다.
+- 오래된 단계 주석과 직접 Debug 로그 잔존 여부를 정리한다.
+- Runtime, Editor, Samples, Tests Assembly 참조 방향을 최종 점검한다.
+- 전체 사용법, 공개 API, 알려진 제한사항, 변경 기록, 버전, 최종 검증 체크리스트를 작성한다.
+- 사용자가 Unity 컴파일, 전체 EditMode 테스트, Validator, Sample, Windows IL2CPP Development Build를 검증할 수 있도록 최종 체크리스트를 제공한다.
+- 사용자가 실제 검증을 완료하기 전에는 초기 버전 완료로 판정하지 않는다.
+
+2. 초기 버전
+- 버전:
+-- 0.1.0
+- 상태:
+-- Initial functional preview
+- 0.1.0은 다음을 포함한다.
+-- Runtime 태그 보유 및 조회
+-- Trait 생명주기
+-- 영구 태그
+-- 소멸 태그
+-- Refresh
+-- MaxDuration
+-- StackCount
+-- 소멸→영구 전환
+-- 이벤트
+-- Diagnostics
+-- Editor Validator
+-- EditMode 단위 및 통합 테스트
+-- Sample 스크립트와 구성 문서
+- 1.0 이전에는 알려진 제한사항 해결과 API 조정이 발생할 수 있음을 문서에 명시한다.
+
+3. 생성 및 수정 파일
+
+3.1. 생성 문서
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_README.txt)
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_PUBLIC_API_REFERENCE.txt)
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_KNOWN_LIMITATIONS.txt)
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_CHANGELOG.txt)
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_VERSION.txt)
+- (Assets/TagTraitSystem/Documents/TagTraitSystem_FINAL_VERIFICATION_CHECKLIST.txt)
+
+3.2. 조건부 수정
+- Runtime, Editor, Samples, Tests 코드에서 기능 변화 없는 정리 대상만 수정한다.
+- (Assets/TagTraitSystem/Runtime/Core/TagID.cs)
+-- Test 및 Sample 주석이 확정 정책과 다를 때만 주석 보완
+-- enum 값 변경 금지
+- (Assets/TagTraitSystem/Samples/README.txt)
+-- 최종 Runtime API 또는 문서와 불일치하는 내용만 수정
+- 기존 Documents 파일
+-- 완료된 단계 상태나 파일명이 최신 구현과 불일치할 때만 수정
+- 기존 테스트
+-- 정리 과정에서 실제 회귀가 발생하거나 명백한 누락이 확인될 때만 최소 수정
+
+3.3. 수정 금지
+- Package 파일
+- ProjectSettings
+- Unity 버전
+- asmdef 이름
+- Runtime 공개 API
+- enum 숫자값
+- 직렬화 필드명
+- 이벤트 시그니처
+- Trait 시그니처
+- TagContainer API
+- TagDiagnostics API
+- Validator 메뉴 경로
+- Sample ContextMenu 계약
+- Git commit
+- Git tag
+- 실제 Scene 또는 .asset 생성
+
+4. 공개 API 동결
+- 다음 공개 타입을 0.1.0 기준으로 목록화한다.
+-- TagID
+-- TagCategory
+-- StackPolicy
+-- TagChangeReason
+-- ExclusiveGroup
+-- TagDefinition
+-- TagInstance
+-- TraitContext
+-- ITagTrait
+-- TagTraitSO
+-- TagChangeEventData
+-- TagContainer
+-- TagDiagnostics
+-- 단계 13의 Sample 공개 타입은 Sample API로 별도 구분한다.
+- 각 타입에서 다음을 문서화한다.
+-- 네임스페이스
+-- 타입 선언
+-- public 프로퍼티
+-- public 이벤트
+-- public 메서드
+-- 매개변수
+-- 기본값
+-- 반환값
+-- 정상 false
+-- 오류 false
+-- 이벤트 발생 조건
+-- Trait 호출 조건
+- 단계 14에서는 공개 시그니처를 변경하지 않는다.
+- 실수로 노출된 API 또는 설계 충돌이 발견되면 수정하지 말고 차단 문제로 보고한다.
+
+5. enum 숫자값 동결
+- 기존 값을 변경하지 않는다.
+- TagID:
+-- None = 0
+-- TestAlpha = 1
+-- TestBeta = 2
+-- TestGamma = 3
+-- SampleKeyword = 100
+-- SamplePermanent = 101
+-- SampleRefresh = 102
+-- SampleMaxDuration = 103
+-- SampleStackCount = 104
+- TagCategory:
+-- None = 0
+-- Keyword = 1
+-- Status = 2
+- StackPolicy:
+-- None = 0
+-- MaxDuration = 1
+-- Refresh = 2
+-- StackCount = 3
+- TagChangeReason:
+-- Added = 0
+-- Removed = 1
+-- DurationRefreshed = 2
+-- DurationExtendedToMax = 3
+-- StackIncreased = 4
+-- StackDecreased = 5
+-- ChangedToPermanent = 6
+-- Expired = 7
+- ExclusiveGroup:
+-- None = 0
+- 문서에 숫자값 변경 시 직렬화 마이그레이션이 필요하다고 명시한다.
+
+6. Test TagID 유지
+- TestAlpha, TestBeta, TestGamma를 제거하지 않는다.
+- 숫자값 1, 2, 3을 변경하지 않는다.
+- 영어 주석 또는 문서에 다음 의미를 유지한다.
+-- Development and test placeholders.
+-- Production projects should add project-specific TagID values.
+-- Do not reuse serialized numeric values without a migration plan.
+- 테스트용 ID가 실제 프로젝트 ID 체계가 아님을 문서화한다.
+
+7. Sample TagID 유지
+- SampleKeyword~SampleStackCount를 유지한다.
+- 숫자값 100~104를 변경하지 않는다.
+- 각 Sample 멤버의 영어 주석을 유지한다.
+-- Sample-only TagID. Replace or extend it with project-specific IDs as needed.
+- 실제 프로젝트에서는 프로젝트별 TagID를 추가하거나 Sample ID를 교체할 수 있다고 문서화한다.
+- 기존 Sample 에셋이 존재한다면 숫자값 변경 전 마이그레이션이 필요함을 안내한다.
+
+8. 직렬화 계약 문서화
+- TagDefinition의 실제 serialized field 이름과 기본값을 코드 기준으로 문서화한다.
+- 최소 포함:
+-- tagID
+-- tagName
+-- category
+-- stackPolicy
+-- trait
+-- maxStackCount
+-- exclusiveGroup
+-- priority
+-- isSaveable
+- 실제 코드의 정확한 이름과 기본값을 확인한다.
+- TagInstance Runtime 상태:
+-- Definition
+-- Duration
+-- RemainingTime
+-- StackCount
+-- IsPerishable
+- enum 숫자값과 serialized field 이름을 임의로 변경하지 않는다.
+- 필드 이름 변경에는 FormerlySerializedAs 또는 별도 마이그레이션 설계가 필요하다고 명시한다.
+
+9. 안전한 코드 정리
+- 허용:
+-- 사용하지 않는 using 제거
+-- 명백히 불필요한 지역 변수 제거
+-- 완료된 단계 예정 주석 제거 또는 현재 설명으로 갱신
+-- 단계 12 교체용 Debug 로그 주석 제거
+-- XML 문서 주석 누락 보완
+-- 오탈자 수정
+-- 중복 설명 주석 정리
+-- Namespace와 폴더 일치 수정
+-- 로그 접두어 중복 제거
+-- README와 실제 API 이름 불일치 수정
+- private 멤버 제거는 다음을 모두 만족할 때만 허용한다.
+-- 호출 없음
+-- Unity 직렬화 필드 아님
+-- Reflection 대상 아님
+-- 테스트 접근 대상 아님
+-- 보류 기능 계약용 상태 아님
+- 기능 변화가 의심되면 수정하지 말고 보고한다.
+
+10. 금지되는 코드 정리
+- 대규모 리팩터링
+- 메서드 구조 광범위 변경
+- Dictionary 또는 컬렉션 교체
+- 이벤트 파이프라인 변경
+- public/internal/private 접근 제한자 변경
+- serialized field 이름 변경
+- API 명칭 변경
+- 반환값 의미 변경
+- 성능 추측만으로 저할당 API 추가
+- 기존 테스트 삭제
+- 보류 기능 구현
+- StackCount Tick 구조 변경
+
+11. 오래된 단계 주석 정리
+- 이미 완료된 다음 유형의 주석을 제거하거나 현재 설명으로 바꾼다.
+-- Stage N에서 구현 예정
+-- 단계 N에서 처리 예정
+-- 단계 12에서 TagDiagnostics로 교체
+- 아직 해결되지 않은 기술 부채는 제거하지 않는다.
+- 코드에 기술 부채 주석이 과도하게 반복되면 대표 위치와 KNOWN_LIMITATIONS 문서로 정리할 수 있다.
+- 필수 유지 기술 부채:
+-- StackCount Tick 처리 구조 재설계 필요
+
+12. 직접 로그 최종 점검
+- Runtime TagTraitSystem 코드에서 직접 Debug.Log/LogWarning/LogError 사용을 검색한다.
+- 원칙:
+-- 직접 Debug 호출은 TagDiagnostics 내부만 허용
+-- Sample은 TagDiagnostics를 사용
+-- Editor Validator는 TagDiagnostics를 사용
+- 직접 로그가 남아 있다면 기존 의미를 유지하며 TagDiagnostics로 교체한다.
+- 정상 no-op 로그 정책을 변경하지 않는다.
+
+13. Assembly 최종 점검
+- 정상 참조:
+-- TagTraitSystem.Runtime: Editor, Samples, Tests 참조 없음
+-- TagTraitSystem.Editor: Runtime 참조
+-- TagTraitSystem.Samples: Runtime 참조
+-- TagTraitSystem.Tests.EditMode: Runtime, Editor, Samples 참조
+- 확인:
+-- 순환 참조 없음
+-- Runtime 코드에 UnityEditor 사용 없음
+-- Editor Assembly는 Editor 플랫폼 한정
+-- Tests는 Editor 전용
+-- Samples는 Runtime 기능을 복제하지 않음
+-- InternalsVisibleTo Assembly 이름 일치
+- asmdef 구조를 변경할 필요가 발견되면 임의 수정하지 말고 영향 범위를 보고한다.
+
+14. TagTraitSystem_README.txt
+- 다음 내용을 포함한다.
+-- 버전 0.1.0
+-- 시스템 목적
+-- 지원 기준 환경
+--- Unity 6 LTS 6000.0.68f1
+--- API Compatibility .NET Standard 2.1
+--- Unity Test Framework 1.6.0
+--- Windows 우선
+--- IL2CPP 고려
+-- 폴더 구조
+-- Assembly 구조
+-- TagDefinition 생성
+-- TagContainer 부착
+-- 영구 TagAdd
+-- PerishableTagAdd
+-- TagSub
+-- TagActivate
+-- Tick 외부 호출 책임
+-- Trait 작성법
+-- 이벤트 구독
+-- TagScan과 조회
+-- Refresh
+-- MaxDuration
+-- StackCount
+-- 소멸→영구 전환
+-- Diagnostics
+-- Editor Validator
+-- Sample
+-- 최종 검증 절차
+-- KNOWN_LIMITATIONS 참조
+- 실제 구현 코드와 메뉴 경로를 대조한다.
+
+15. TagTraitSystem_PUBLIC_API_REFERENCE.txt
+- 코드의 실제 공개 API를 기준으로 작성한다.
+- 설계안만 복사하지 않는다.
+- 포함:
+-- 공개 타입 목록
+-- 네임스페이스
+-- enum 숫자값
+-- TagDefinition getter와 의미
+-- TagInstance getter와 의미
+-- TraitContext 필드 또는 프로퍼티
+-- ITagTrait 메서드
+-- TagTraitSO 메서드
+-- TagChangeEventData
+-- TagContainer 이벤트
+-- TagContainer 공개 메서드
+-- TagDiagnostics 공개 메서드
+-- Sample 공개 타입 별도 구분
+-- 정상 false와 Error false 구분
+-- Source와 Target 의미
+-- Previous 값 의미
+-- 이벤트 집계
+-- Trait 순서
+-- TagScan 얕은 배열 스냅샷과 Instance 공유 의미
+-- same ID/same Definition
+-- same ID/different Definition
+-- 재진입과 Nested Tick
+-- 직렬화 계약
+- XML 문서와 코드가 불일치하면 충돌을 보고한다.
+
+16. TagTraitSystem_KNOWN_LIMITATIONS.txt
+- 필수 포함:
+-- 버전 0.1.0의 preview 상태
+-- StackCount Tick 처리 순서 의존성
+-- Tick 콜백에서 다른 TagID의 StackCount 변경 시 처리 순서에 따라 결과 차이 가능
+-- 보류 기능 구현 또는 리팩터링 전 Tick 변경 큐, 계산/콜백 분리, 트랜잭션 구조 설계 필요
+-- 동일 Duration 순차 StackCount 모델
+-- 소멸 StackCount 추가/중간 감소 시 RemainingTime = Duration
+-- 오브젝트별 MaxStackCount override 없음
+-- TagDefinition이 최대 스택의 유일한 원천
+-- TagScan 호출 시 배열 스냅샷 할당
+-- Tick 스냅샷 할당 가능성
+-- 외부 시스템이 Tick 호출
+-- 저장/불러오기 없음
+-- ExclusiveGroup 동작 없음
+-- Priority 동작 없음
+-- IsSaveable 동작 없음
+-- 자동 TagID 생성기 없음
+-- PlayMode 자동 테스트 없음
+-- Sample Scene 및 에셋 수동 생성
+-- Unity 메인 스레드 사용 전제
+-- Runtime thread-safe 보장 없음
+-- 모바일 실제 빌드 검증은 별도
+-- Windows IL2CPP 실제 검증은 사용자 수행
+- 제한사항을 해결했다고 허위로 작성하지 않는다.
+
+17. TagTraitSystem_CHANGELOG.txt
+- 형식:
+-- Version 0.1.0
+-- Initial functional preview
+- 최소 항목:
+-- Runtime tag container and query API
+-- Trait lifecycle and activation
+-- Permanent and perishable tags
+-- Change events
+-- Duration normalization
+-- Refresh policy
+-- MaxDuration policy
+-- Permanent and perishable StackCount policies
+-- Perishable to permanent conversion
+-- Diagnostics
+-- Editor TagDefinition validation
+-- EditMode unit and integration tests
+-- Sample scripts and setup documentation
+-- Known limitations reference
+- 날짜는 현재 사용자 작업 기준과 충돌할 수 있으므로 사용자가 요구하지 않았다면 생략하거나 실제 작업일 확인 후만 작성한다.
+- 구현되지 않은 기능을 포함하지 않는다.
+
+18. TagTraitSystem_VERSION.txt
+- 내용은 한 줄:
+-- 0.1.0
+- BOM 없이 UTF-8 텍스트로 작성한다.
+- Runtime Version 상수를 추가하지 않는다.
+- AssemblyVersion을 추가하지 않는다.
+- package.json을 생성하지 않는다.
+
+19. TagTraitSystem_FINAL_VERIFICATION_CHECKLIST.txt
+- 체크박스 텍스트 형식으로 작성한다.
+- 최소 구성:
+
+19.1. 코드와 컴파일
+- Unity 프로젝트 열기
+- Console compile error 0
+- 예상하지 않은 warning 검토
+- Runtime 직접 Debug 로그 확인
+- asmdef 참조 확인
+
+19.2. 전체 EditMode 테스트
+- 환경 테스트
+- Runtime 단위 테스트
+- Trait 테스트
+- Event 테스트
+- Perishable 테스트
+- Refresh/MaxDuration/StackCount 테스트
+- Diagnostics 테스트
+- Editor Validator 테스트
+- 통합 테스트
+- Sample 테스트
+- 전체 통과 결과 기록
+
+19.3. Validator 수동 검증
+- 메뉴 표시:
+-- Tools/TagTraitSystem/Validate Tag Definitions
+- 정상 에셋 0 errors/0 warnings
+- TagID.None Error
+- 중복 ID Error
+- 중복 이름 Warning
+- invalid MaxStackCount Error
+- 자동 수정 없음
+
+19.4. Sample 수동 검증
+- TagContainer 및 Controller 추가
+- SampleLogTraitSO 생성
+- 정책별 Definition 생성
+- ContextMenu 확인
+- Keyword
+- Permanent
+- Refresh
+- MaxDuration
+- StackCount
+- 전환
+- autoTick true
+- autoTick false
+- 이벤트와 Trait 로그
+
+19.5. Windows IL2CPP Development Build
+- Build Target Windows
+- Scripting Backend IL2CPP
+- Development Build
+- Build 성공
+- 실행 성공
+- Runtime Assembly 포함
+- Editor/Test Assembly 제외
+- Sample Assembly 컴파일
+- Warning 조건부 동작
+- 기본 Scene 오류 없음
+
+19.6. 문서 검증
+- README
+- PUBLIC_API_REFERENCE
+- KNOWN_LIMITATIONS
+- CHANGELOG
+- VERSION
+- Sample README
+- 코드와 문서 일치
+
+19.7. 최종 판정
+- 사용자 컴파일 성공 확인
+- 사용자 전체 EditMode 테스트 통과 확인
+- Validator 수동 확인
+- Sample 수동 확인
+- Build 확인
+- 미해결 문제 기록
+- 단계 14 완료 승인
+
+20. 문서와 코드 대조 항목
+- 다음을 실제 코드에서 확인 후 문서화한다.
+-- CreateAssetMenu 경로
+-- Sample Trait CreateAssetMenu 경로
+-- Validator 메뉴 경로
+-- Namespace
+-- Assembly 이름
+-- TagID 숫자값
+-- TagChangeReason 숫자값
+-- MaxStackCount 기본값
+-- duration 정규화 방식
+-- TimeEpsilon 값
+-- public API 시그니처
+-- Warning/Error 출력 조건
+-- StackCount 추가와 감소 시간 초기화
+-- 완전 소진 시 StackCount = 1
+-- Previous 값 의미
+-- 이벤트 순서
+- 코드가 최신 설계와 충돌하면 문서를 코드에 맞춰 숨기지 말고 충돌을 보고한다.
+
+21. 공개 API 스냅샷 테스트
+- Reflection으로 모든 public API를 고정하는 신규 테스트는 추가하지 않는다.
+- 이유:
+-- 사소한 확장에도 과도한 실패
+-- 컴파일러 생성 멤버 문제
+-- 0.1.0 단계의 유지 비용
+- enum 숫자값 및 기존 핵심 계약 테스트는 유지한다.
+- PUBLIC_API_REFERENCE와 단계 14 검수에서 정적으로 확인한다.
+
+22. 성능 정적 점검
+- 벤치마크를 새로 작성하지 않는다.
+- 프로파일링 결과 없이 최적화하지 않는다.
+- 정적 확인:
+-- Runtime 핵심 경로의 불필요한 LINQ
+-- 다중 StackCount Tick에서 스택 수 비례 반복문 없음
+-- TagScan 배열 스냅샷
+-- Tick 스냅샷
+-- 이벤트 구독자 복사 또는 할당
+-- Editor Validator 할당은 Editor 전용
+-- Sample이 Runtime 핵심 경로에 영향 없음
+- 저할당 public API를 추가하지 않는다.
+- 실제 성능 문제가 확인되면 별도 설계를 권장한다.
+
+23. 테스트 정책
+- 단계 14에서 대량 신규 테스트를 작성하지 않는다.
+- 코드 정리로 실제 동작이 변한 경우에만 최소 회귀 테스트를 추가한다.
+- 기존 테스트를 삭제하거나 완화하지 않는다.
+- 테스트 실행 결과는 사용자가 Unity에서 확인해야 한다.
+- AI는 다음 표현을 사용한다.
+-- Unity compilation not verified.
+-- Existing test suite not executed.
+-- Manual Unity verification required.
+- 사용자가 실제 결과를 전달한 경우에만 해당 상태를 갱신한다.
+
+24. StackCount Tick 기술 부채
+- 코드와 KNOWN_LIMITATIONS에 유지한다.
+- 단계 14에서 해결하지 않는다.
+- 다음 개발 전에 별도 설계가 필요한 시점:
+-- 보류 기능 구현 전
+-- 대규모 리팩터링 전
+-- Tick 순서 독립성이 필요한 기능 전
+-- 네트워크 또는 결정론 요구 전
+- 후보 구조:
+-- Tick 변경 요청 지연 큐
+-- 시간 계산과 콜백 단계 분리
+-- Tick 트랜잭션 및 상태 병합
+
+25. 현재 단계 비범위
+- ExclusiveGroup 기능
+- Priority 기능
+- IsSaveable 저장 기능
+- 저장/로드
+- 네트워크
+- 자동 TagID 생성
+- ID 데이터베이스
+- Custom Inspector
+- PropertyDrawer
+- Build 전 자동 Validator
+- PlayMode Tests Assembly
+- 모바일 실제 빌드 수행
+- StackCount Tick 재설계
+- 저할당 Runtime API
+- UPM 패키지화
+- Git 작업
+- 실제 릴리스 배포
+
+26. 금지 사항
+- 새 기능을 추가하지 않는다.
+- 공개 API를 변경하지 않는다.
+- enum 숫자값을 변경하지 않는다.
+- serialized field 이름을 변경하지 않는다.
+- Test/Sample ID를 제거하지 않는다.
+- Runtime Version 상수를 추가하지 않는다.
+- package.json을 만들지 않는다.
+- 대규모 리팩터링을 하지 않는다.
+- 테스트를 삭제하지 않는다.
+- 알려진 제한사항을 숨기지 않는다.
+- 모바일/IL2CPP 검증을 완료했다고 추정하지 않는다.
+- 사용자의 Unity 검증 전 최종 완료로 판정하지 않는다.
+- 실행하지 않은 테스트를 통과했다고 보고하지 않는다.
+
+27. 작업 절차
+- 단계 13-2 완료 상태 확인
+- 현재 파일과 Assembly 구조 목록화
+- 공개 API 목록 추출
+- enum 숫자값 확인
+- serialized field 이름과 기본값 확인
+- Runtime 직접 Debug 로그 검색
+- 오래된 단계 주석 검색
+- 기능 변화 없는 정리 적용
+- Assembly 참조 방향 확인
+- Sample 및 Validator 경로 확인
+- README 작성
+- PUBLIC_API_REFERENCE 작성
+- KNOWN_LIMITATIONS 작성
+- CHANGELOG 작성
+- VERSION 작성
+- FINAL_VERIFICATION_CHECKLIST 작성
+- 모든 문서를 실제 코드와 대조
+- diff를 검토해 기능 변화가 없는지 확인
+- 전체 테스트 파일 존재 여부 정적 확인
+- Unity 검증 미실행 상태 보고
+
+28. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 14 - 초기 버전 0.1.0 마감
+
+(버전)
+- 0.1.0
+- Initial functional preview
+
+(생성한 문서)
+- 경로와 역할
+
+(수정한 코드)
+- 경로
+- 기능 변화 없음 여부
+- 정리 이유
+
+(공개 API 동결)
+- 타입 목록
+- 변경 없음 확인
+- 충돌 발견 여부
+
+(enum 및 직렬화 계약)
+- 숫자값 유지
+- serialized field 이름 유지
+- Test/Sample ID 유지
+
+(Assembly 점검)
+- 참조 방향
+- Runtime UnityEditor 미사용
+- 순환 참조 없음 여부
+
+(로그 및 주석 정리)
+- 직접 Debug 로그
+- 오래된 단계 주석
+- 유지한 기술 부채
+
+(알려진 제한사항)
+- 핵심 목록
+- StackCount Tick 구조 재설계 필요
+
+(테스트 및 검증 상태)
+- Unity compilation not verified.
+- Existing test suite not executed.
+- Manual Unity verification required.
+
+(사용자 수동 검증 요청)
+- 전체 EditMode 테스트
+- Validator
+- Sample
+- Windows IL2CPP Development Build
+- 문서 확인
+
+(초기 버전 완료 판정)
+- AI 문서 및 정적 정리 완료
+- 사용자 검증 전: 단계 14 최종 완료 아님
+- 사용자 검증 통과 후: 0.1.0 완료 가능

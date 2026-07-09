@@ -1,0 +1,302 @@
+유니티 TagTrait 시스템 개발 단계 7 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 7
+- 단계 제목: 소멸 태그의 영구 전환
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 원본 개발 설계서
+-- AI 개발 공통 규칙
+-- 개발 단계 0~6 완료 기록
+-- 개발 단계 7 구현 프롬프트
+-- 개발 단계 7 구현 결과 보고
+- 새로운 기능을 구현하지 않는다.
+- 수정이 필요하면 문제, 심각도, 수정 범위 및 영향을 먼저 보고한다.
+
+1. 검수 목적
+- 소멸 -> 영구 단방향 전환이 정확히 구현되었는지 확인한다.
+- 동일 TagInstance 참조와 StackCount가 보존되는지 확인한다.
+- Trait 생명주기가 재호출되지 않는지 확인한다.
+- ChangedToPermanent Updated 이벤트 데이터와 발생 시점을 확인한다.
+- 기존 Tick, 재진입, 중복 정책의 회귀 여부를 확인한다.
+- 단계 8~11 기능이 조기 구현되지 않았는지 확인한다.
+
+2. 검수 대상
+- Assets/TagTraitSystem/Runtime/Core/TagInstance.cs
+- Assets/TagTraitSystem/Runtime/Components/TagContainer.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerPermanentConversionTests.cs
+- 단계 7에서 생성 또는 수정된 모든 파일
+- 단계 7 구현 결과 보고
+- 단계 0~6 파일과 테스트의 무단 변경 여부
+
+3. TagInstance 전환 API
+- internal bool TryConvertToPermanent 시그니처 확인
+- 이미 영구이면 false인지 확인
+- 소멸 상태이면 true인지 확인
+- Duration = 0f
+- RemainingTime = 0f
+- IsPerishable = false
+- StackCount 유지
+- Definition 참조 유지
+- Trait, 이벤트, 로그, Dictionary 접근 없음
+- setter 또는 메서드가 불필요하게 public으로 노출되지 않았는지 확인
+
+4. 동일 Instance 유지
+- 전환 전후 참조 동일성 확인
+- Dictionary 값 교체 없음
+- 새 TagInstance 생성 없음
+- 기존 TagScan 얕은 스냅샷에서 전환 상태 관찰 가능
+- 외부 참조 단절 없음
+
+5. 전환 방향
+- 소멸 태그 + TagAdd는 true와 영구 전환
+- 영구 태그 + PerishableTagAdd는 false
+- 영구 -> 소멸 기능이 없는지 확인
+- RemainingTime 크기를 전환 제한 조건으로 사용하지 않는지 확인
+
+6. StackCount 검수
+- 전환 시 기존 StackCount 보존
+- 1로 강제 초기화하지 않음
+- 증가 또는 감소 없음
+- ChangedToPermanent와 StackIncreased를 같은 호출에서 함께 처리하지 않음
+- 단계 10·11 인계가 보고에 명시됨
+
+7. TagAdd 분기 검수
+- Definition 입력 검증 유지
+- 동일 ID 가드 획득 유지
+- 기존 Instance 조회 후 Definition 참조 비교
+- 다른 Definition이면 Error + false
+- 같은 Definition 소멸이면 전환
+- 같은 Definition 영구이면 기존 중복 false
+- 소멸 전환 경로에서 TryAddInstance를 호출하거나 새 객체를 만들지 않음
+
+8. Trait 생명주기 검수
+- 전환 시 OnAdd 미호출
+- OnRemove 미호출
+- OnActivate 미호출
+- 정상 Keyword에서도 Trait 미호출
+- 기존 Trait 호출 횟수 유지
+
+9. Updated 이벤트 검수
+- 성공 전환당 정확히 한 번
+- Reason == ChangedToPermanent
+- Container 정확성
+- Definition은 기존 Instance.Definition
+- Instance는 동일 전환 객체
+- Source는 TagAdd 전달값
+- PreviousDuration은 전환 직전 값
+- PreviousRemainingTime은 전환 직전 값
+- PreviousStackCount는 전환 직전 값
+- 콜백 시 현재 상태가 영구 상태
+- Added와 Removed 미발생
+
+10. 이벤트 예외 검수
+- SafeInvoke 사용
+- 첫 구독자 예외 후 다음 구독자 호출
+- 상태 롤백 없음
+- TagAdd true 유지
+- 예외 비전파
+- Error 로그와 단계 12 교체 주석 유지
+- 예외 이후 재진입 가드 정상 해제
+
+11. 재진입 검수
+- Updated 이벤트 종료까지 processingTagIDs 유지
+- 같은 ID TagAdd 차단
+- 같은 ID TagSub 차단
+- 같은 ID PerishableTagAdd 차단
+- 같은 ID TagActivate 차단
+- 추가 상태 변화와 이벤트 없음
+- 다른 ID 변경 허용
+- 조회 API 허용
+- finally에서 가드 해제
+
+12. Tick 연동 검수
+- 전환 후 Tick에서 감소하지 않음
+- Tick에서 IsPerishable 재검사 유지
+- Tick 스냅샷에 포함되었더라도 처리 전 전환되면 건너뜀
+- 전환 Instance를 만료시키지 않음
+- Tick 구조와 isTicking 정책의 불필요한 변경 없음
+
+13. PerishableTagAdd 임시 정책 검수
+- 기존 영구 태그에 false
+- 기존 소멸 태그에 false
+- 시간 갱신 없음
+- 전환 없음
+- 스택 변화 없음
+- Trait과 이벤트 없음
+- 같은 ID 다른 Definition은 Error + false
+- 단계 8, 9, 11 인계 명시
+
+14. 기존 테스트 정책 변경 검수
+- 영구 태그 중복 TagAdd false 테스트 유지
+- 기존 소멸 태그 + TagAdd false 테스트가 있었다면 전환 성공 기대값으로 의도적으로 수정
+- 테스트를 삭제하거나 임의 완화하지 않음
+- 변경 이유가 보고됨
+- 단계 6 PerishableTagAdd 중복 false 테스트 유지
+
+15. 필수 테스트 검수 - 상태
+- 전환 true
+- 동일 Instance
+- Duration/RemainingTime 0
+- IsPerishable false
+- StackCount 보존
+- Tick 무영향
+- 기존 TagScan 스냅샷 반영
+
+16. 필수 테스트 검수 - Trait과 이벤트
+- Trait 세 콜백 미호출
+- Keyword 미호출
+- Updated 한 번
+- ChangedToPermanent
+- Previous 값
+- Source
+- 최종 상태 조회
+- Added/Removed 미발생
+- 구독자 예외 정책
+
+17. 필수 테스트 검수 - 실패와 재진입
+- 기존 영구 TagAdd false
+- 영구 StackCount 정책도 단계 10 전 false
+- 영구/소멸 기존 태그 PerishableTagAdd false
+- 다른 Definition 오류
+- 실패 이벤트 없음
+- 동일 ID 재진입 네 API 차단
+- 다른 ID 허용
+- 예외 후 가드 해제
+- Tick 처리 전 전환된 스냅샷 항목 건너뜀
+
+18. 기존 기능 회귀
+- 신규 영구 TagAdd의 Added 이벤트 유지
+- 신규 소멸 PerishableTagAdd의 Added 이벤트 유지
+- TagSub와 만료 Removed 이벤트 유지
+- TagActivate 정책 유지
+- Tick 입력과 만료 정책 유지
+- Definition 유효성 검사 유지
+- 기존 공개 API 시그니처 불변
+
+19. 코드 스타일
+- var 금지
+- BSD 중괄호
+- private camelCase
+- XML 영어
+- 일반 주석 한글
+- 로그 영어
+- Nullable Reference Type 미도입
+- 불필요한 LINQ, #region, using 없음
+
+20. 범위 초과
+- 영구 -> 소멸 전환
+- 영구 StackCount 증가
+- 소멸 StackCount 처리
+- Refresh
+- MaxDuration
+- 전환 Trait 재호출
+- 전환 Added/Removed 이벤트
+- 일반 Tick Updated 이벤트
+- 새 공개 API
+- Editor Validator
+- TagDiagnostics
+- 위 기능이 구현되면 범위 초과 또는 차단 문제로 보고한다.
+
+21. 결과 보고 검수
+- 수정·생성 파일 정확성
+- TryConvertToPermanent 보고
+- 동일 Instance와 StackCount 보존 보고
+- Trait 미호출 보고
+- Updated 이벤트 데이터 보고
+- 단계 8~11 인계 보고
+- 다음 또는 동일 의미 포함:
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+
+22. 문제 분류
+
+22.1. 차단 문제
+- 새 Instance 교체
+- StackCount 초기화 또는 변경
+- Trait 생명주기 재호출
+- Added/Removed 이벤트 발생
+- ChangedToPermanent 누락 또는 잘못된 Previous 값
+- 영구 -> 소멸 전환 허용
+- 같은 ID 재진입 허용
+- Tick에서 전환된 태그 감소 또는 만료
+- 단계 8~11 조기 구현
+- 테스트 결과 허위 보고
+
+22.2. 수정 권장
+- 주석 또는 완료 보고 누락
+- 경계 테스트 일부 누락
+- XML/코드 스타일 위반
+- 불필요한 helper 또는 리팩터링
+
+22.3. 사용자 확인 필요
+- Unity 컴파일
+- 단계 0~6 회귀 테스트
+- 단계 7 전환 테스트
+- 이벤트 예외 및 LogAssert
+- Tick 스냅샷 연동
+
+23. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 7 - 소멸 태그의 영구 전환
+
+(차단 문제)
+- 없음 또는 경로, 문제, 영향
+
+(수정 권장 문제)
+- 없음 또는 경로, 문제, 수정안
+
+(범위 초과)
+- 없음 또는 파일과 기능
+
+(TagInstance 전환 검수)
+- 내부 API
+- 동일 Instance
+- 최종 상태
+- StackCount
+
+(TagAdd 분기 검수)
+- 신규 추가
+- 소멸 전환
+- 영구 중복
+- Definition 불일치
+
+(Trait 및 이벤트 검수)
+- 생명주기 미호출
+- Updated 데이터
+- SafeInvoke
+
+(재진입 및 Tick 검수)
+- 동일 ID
+- 다른 ID
+- 가드 해제
+- Tick 스냅샷
+
+(테스트 검수)
+- 상태
+- Trait
+- 이벤트
+- 실패
+- 재진입
+
+(기존 기능 회귀)
+- 단계 0~6 정책
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 결과
+- Test code written, not executed 또는 사용자 결과
+
+(사용자 확인 필요)
+- 남은 수동 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 7 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 근거

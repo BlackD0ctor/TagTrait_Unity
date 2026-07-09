@@ -1,0 +1,186 @@
+유니티 TagTrait 시스템 개발 단계 11-2 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 11-2
+- 단계 제목: 소멸 StackCount 다중 스택 Tick
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 단계 11-1 구현 및 검수 프롬프트
+-- 단계 11-2 구현 프롬프트
+-- 단계 0~11-1 완료 기록
+-- 단계 11-2 구현 결과 보고
+
+1. 검수 목적
+- double 기반 전체 잔여시간 산술 계산을 확인한다.
+- 큰 Tick의 다중 스택 소진과 초과시간 전달을 확인한다.
+- 일부 소진과 완전 소진 이벤트 집계를 확인한다.
+- StackCount=0 미도입과 연속 RemainingTime 정책을 확인한다.
+- 처리 순서 제한사항과 기술 부채 기록을 확인한다.
+
+2. 검수 대상
+- Runtime/Core/TagInstance.cs
+- Runtime/Components/TagContainer.cs
+- Tests/EditMode/TagContainerPerishableStackCountTickTests.cs
+- 단계 11-2에서 수정한 기존 테스트
+- 구현 결과 보고
+
+3. 산술 모델 검수
+- Total = RemainingTime + (StackCount - 1) * Duration인가
+- double 중간 계산인가
+- StackCount 비례 반복문이 없는가
+- 초과시간을 버리지 않는가
+- Duration/RemainingTime을 Tick 후 재정규화하지 않는가
+
+4. Tick 입력 검수
+- 0 no-op
+- 음수/NaN/Infinity 전체 Tick no-op
+- 기존 로그 정책 유지
+- nested Tick 차단
+- finally 정리
+
+5. 처리 대상 재확인
+- Dictionary 존재
+- 같은 Instance 참조
+- tickModified 미포함
+- IsPerishable
+- 정책별 분기
+- 제거/전환/갱신된 스냅샷 항목 건너뜀
+
+6. 최종 상태 계산 검수
+- epsilon 반영 ceil 계산인가
+- finalStackCount 최소 1인가
+- finalRemaining이 0 초과 Duration 이하인가
+- 정확한 경계에서 RemainingTime = Duration인가
+- 부동소수점 오차로 잘못된 추가 스택이 남지 않는가
+
+7. 스택 소모 없음 검수
+- StackCount 유지
+- RemainingTime만 감소
+- Updated 없음
+- Trait 없음
+
+8. 일부 스택 소진 검수
+- 여러 스택을 한 번에 소진 가능한가
+- 최종 상태만 적용하는가
+- Updated 한 번인가
+- Reason StackDecreased인가
+- Previous 값이 Tick 시작 상태인가
+- OnRemove/Removed가 없는가
+- 스택별 중간 이벤트가 없는가
+
+9. 완전 소진 검수
+- remainingAfter <= epsilon에서 제거인가
+- RemainingTime=0인가
+- StackCount=1인가
+- StackCount=0을 만들지 않는가
+- OnRemove 한 번인가
+- Removed 한 번인가
+- Reason Expired인가
+- 중간 Updated가 없는가
+- Previous 값이 Tick 시작 상태인가
+
+10. 큰 Tick 검수
+- 큰 Tick 한 번과 작은 Tick 여러 번이 가능한 한 같은 최종 상태인가
+- 계산량이 StackCount에 비례하지 않는가
+- int.MaxValue 수준의 큰 StackCount에서도 곱셈 overflow를 피하는가
+- double 정밀도 한계를 무시하지 않고 방어 코드가 있는가
+
+11. Trait 및 이벤트 예외 검수
+- OnRemove 예외 후 제거 계속
+- 이벤트 구독자 예외 후 상태 유지
+- 다음 구독자 계속 호출
+- 같은 ID 재진입 차단
+- 다른 ID 변경 허용
+
+12. 비정상 상태 검수
+- Duration <= 0
+- StackCount < 1
+- 비유한 RemainingTime
+- StackCount > MaxStackCount
+- 자동 보정하지 않는가
+- 초과 상태를 MaxStackCount로 자르지 않는가
+- 안전하지 않은 상태에서 임의 제거하지 않는가
+- 단계 12 진단 대상으로 남기는가
+
+13. Tick 중 외부 변경 검수
+- 11-1의 tickModified 정책 유지
+- 처리 전 변경은 건너뜀
+- 처리 후 변경은 소진 결과 복구 안 함
+- 처리 순서에 따른 최종 StackCount 차이를 허용
+- 순서 독립성 미보장 명시
+
+14. 향후 필수 재설계 기록 검수
+- StackCount Tick 처리 구조 재설계 필요 문구
+- 보류 기능/리팩터링 전 설계 필요
+- 지연 큐, 단계 분리, 트랜잭션 후보
+- 현재 미구현
+- 완료 보고에서 누락되지 않았는가
+
+15. 테스트 검수
+- 단일 스택 감소
+- 정확한 경계
+- 한 스택+다음 일부
+- 여러 스택
+- 이벤트 없음/Updated/Expired 분기
+- 큰 Tick과 작은 Tick 동등성
+- epsilon
+- Continuous RemainingTime
+- Tick 전후 외부 변경
+- nested Tick
+- finally 정리
+- 비정상 상태
+- TearDown
+
+16. 범위 초과 검수
+- Tick 변경 큐
+- 트랜잭션
+- 콜백 단계 분리
+- 스택별 duration
+- 오브젝트별 최대치
+- 자동 보정
+- Editor Validator
+- TagDiagnostics 완성
+- 조기 구현 시 영향 범위 보고
+
+17. 차단 문제
+- 반복문 기반 다중 스택 소진
+- 초과시간 폐기
+- 일부 소진 이벤트 누락 또는 스택별 반복 이벤트
+- 완전 소진에서 Updated+Removed 동시 발생
+- StackCount 0 도입
+- Tick 후 RemainingTime 반올림
+- Previous 값이 Tick 시작 상태가 아님
+- 처리 순서 독립성 허위 보장
+- 기술 부채 기록 누락
+- 실행 결과 허위 보고
+
+18. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 11-2
+
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+
+(산술 모델 검수)
+(Tick 입력 및 스냅샷 검수)
+(최종 상태 계산 검수)
+(스택 소모 없음)
+(일부 소진)
+(완전 소진)
+(이벤트 및 Trait 검수)
+(큰 Tick 및 수치 경계)
+(외부 변경 상호작용)
+(비정상 상태)
+(향후 필수 재설계 기록)
+(테스트 검수)
+(기존 기능 회귀)
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

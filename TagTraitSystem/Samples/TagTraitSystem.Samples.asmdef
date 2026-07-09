@@ -1,0 +1,16 @@
+{
+    "name": "TagTraitSystem.Samples",
+    "rootNamespace": "TagTraitSystem.Samples",
+    "references": [
+        "TagTraitSystem.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,306 @@
+유니티 TagTrait 시스템 개발 단계 14 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 14
+- 단계 제목: 초기 버전 0.1.0 마감, 문서화 및 최종 검증 준비
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 14 구현 프롬프트
+-- 개발 단계 0~13-2 완료 기록
+-- 개발 단계 14 구현 결과 보고
+-- 단계 14에서 생성된 최종 문서
+
+1. 검수 목적
+- 0.1.0 초기 버전 문서가 실제 코드와 일치하는지 확인한다.
+- 공개 API, enum 숫자값, 직렬화 계약이 변경되지 않았는지 확인한다.
+- 코드 정리가 기능 변화를 일으키지 않았는지 확인한다.
+- Assembly 참조 방향과 Runtime/Editor/Samples/Tests 경계를 최종 확인한다.
+- 알려진 제한사항과 기술 부채가 숨겨지지 않았는지 확인한다.
+- 사용자의 실제 Unity 검증 전 최종 완료로 판정하지 않았는지 확인한다.
+
+2. 검수 대상
+- 단계 14에서 수정한 모든 코드
+- Assets/TagTraitSystem/Documents/TagTraitSystem_README.txt
+- Assets/TagTraitSystem/Documents/TagTraitSystem_PUBLIC_API_REFERENCE.txt
+- Assets/TagTraitSystem/Documents/TagTraitSystem_KNOWN_LIMITATIONS.txt
+- Assets/TagTraitSystem/Documents/TagTraitSystem_CHANGELOG.txt
+- Assets/TagTraitSystem/Documents/TagTraitSystem_VERSION.txt
+- Assets/TagTraitSystem/Documents/TagTraitSystem_FINAL_VERIFICATION_CHECKLIST.txt
+- 기존 Samples/README.txt 조건부 수정
+- 구현 결과 보고
+- asmdef 파일
+- enum 및 serialized data 타입
+
+3. 버전 검수
+- VERSION.txt가 정확히 0.1.0인가
+- README와 CHANGELOG가 0.1.0인가
+- Initial functional preview 상태인가
+- 1.0 이전 API 변경 가능성이 명시되었는가
+- Runtime Version 상수나 AssemblyVersion이 추가되지 않았는가
+- package.json이 생성되지 않았는가
+
+4. 공개 API 변경 검수
+- TagContainer public API 변경 없음
+- TagDefinition public getter 변경 없음
+- TagInstance public getter 변경 없음
+- TraitContext 변경 없음
+- ITagTrait/TagTraitSO 시그니처 변경 없음
+- 이벤트 타입과 이름 변경 없음
+- TagDiagnostics API 변경 없음
+- 접근 제한자 변경 없음
+- 기본 매개변수 변경 없음
+- 반환값 의미 변경 없음
+- 발견된 충돌을 임의 수정하지 않았는가
+
+5. enum 숫자값 검수
+- TagID 기존 값 유지
+- TestAlpha/Beta/Gamma 유지
+- SampleKeyword~SampleStackCount 유지
+- TagCategory 유지
+- StackPolicy 유지
+- TagChangeReason 유지
+- ExclusiveGroup.None 유지
+- 암시적 재번호 부여가 없는가
+- 문서와 테스트가 실제 값과 일치하는가
+
+6. Test 및 Sample ID 검수
+- Test ID를 제거하지 않았는가
+- Sample ID를 제거하지 않았는가
+- Test placeholder 설명이 있는가
+- Sample-only 영어 주석이 유지되는가
+- 프로젝트별 ID 추가/교체 안내가 있는가
+- 직렬화 숫자 재사용 경고가 있는가
+
+7. 직렬화 계약 검수
+- TagDefinition serialized field 이름이 변경되지 않았는가
+- 기본값이 문서와 코드에서 일치하는가
+- maxStackCount 기본값 1 확인
+- deferred field 기본값 확인
+- TagInstance 상태 의미 일치
+- 필드 이름 변경 또는 FormerlySerializedAs 누락이 없는가
+- PUBLIC_API_REFERENCE에 직렬화 주의가 있는가
+
+8. 안전한 코드 정리 검수
+- 사용하지 않는 using과 오탈자 수준인가
+- 대규모 리팩터링이 없는가
+- 컬렉션 구조 변경이 없는가
+- 이벤트 파이프라인 변경이 없는가
+- private 멤버 제거가 안전한가
+- 테스트 또는 Reflection 대상 제거가 없는가
+- 기능 변경 diff가 없는가
+- 새 기능이 추가되지 않았는가
+
+9. 오래된 주석 검수
+- 완료된 단계 예정 주석이 정리되었는가
+- 단계 12 로그 교체 주석이 남아 있지 않은가
+- 현재 코드 설명과 충돌하는 주석이 없는가
+- StackCount Tick 처리 구조 재설계 필요 항목은 유지되는가
+- 기술 부채를 완료된 것으로 오표기하지 않았는가
+
+10. 로그 검수
+- Runtime 직접 Debug 로그가 TagDiagnostics 내부 외에 없는가
+- Sample과 Validator가 TagDiagnostics를 사용하는가
+- Error 항상 출력 정책 유지
+- Warning/Log Editor 또는 Development Build 정책 유지
+- 정상 no-op 무로그 유지
+- 접두어 중복 없음
+
+11. Assembly 검수
+- Runtime이 Editor/Samples/Tests를 참조하지 않는가
+- Editor가 Runtime만 참조하는가
+- Samples가 Runtime만 참조하는가
+- Tests.EditMode가 필요한 Assembly를 참조하는가
+- 순환 참조 없음
+- Runtime에 UnityEditor using 없음
+- Editor includePlatforms 정확
+- InternalsVisibleTo 이름 정확
+- 단계 14에서 불필요한 asmdef 변경이 없는가
+
+12. README 검수
+- 버전
+- 환경
+- 설치 및 구조
+- TagDefinition
+- TagContainer
+- Tick 책임
+- Trait
+- 이벤트
+- 조회
+- 정책
+- 전환
+- Diagnostics
+- Validator
+- Sample
+- 최종 검증
+- 실제 코드와 이름/경로 일치
+- 구현되지 않은 기능 설명 없음
+
+13. PUBLIC_API_REFERENCE 검수
+- 공개 타입 누락 없음
+- 실제 시그니처와 일치
+- enum 값 일치
+- 정상 false와 Error false 구분
+- Source/Target 의미
+- Previous 값 의미
+- 이벤트 집계
+- Trait 순서
+- TagScan 얕은 스냅샷
+- same ID 규칙
+- 재진입/Nested Tick
+- 직렬화 계약
+- Sample API 구분
+
+14. KNOWN_LIMITATIONS 검수
+- preview 상태
+- StackCount Tick 순서 의존성
+- 향후 구조 설계 필요
+- 동일 Duration 순차 스택
+- 증가/감소 시간 초기화
+- MaxStackCount 원천
+- TagScan/Tick 할당
+- 외부 Tick 호출
+- 저장 없음
+- ExclusiveGroup/Priority/IsSaveable 미구현
+- 자동 ID 없음
+- PlayMode 자동 테스트 없음
+- Sample 수동 구성
+- thread-safe 미보장
+- 모바일/IL2CPP 검증 상태
+- 제한사항 은폐 없음
+
+15. CHANGELOG 검수
+- 0.1.0
+- 실제 구현된 기능만 포함
+- Diagnostics
+- Validator
+- Tests
+- Sample
+- Known limitations 참조
+- 구현되지 않은 기능 없음
+- 확인되지 않은 날짜나 릴리스 상태 없음
+
+16. VERSION 검수
+- 한 줄 0.1.0
+- 불필요한 설명 없음
+- 파일 인코딩 문제 없음
+- 코드 상수와 중복 관리 없음
+
+17. FINAL_VERIFICATION_CHECKLIST 검수
+- Unity 컴파일
+- 전체 EditMode 테스트
+- Validator 수동 검증
+- Sample 수동 검증
+- Windows IL2CPP Development Build
+- 문서 대조
+- 최종 사용자 승인
+- 예상 결과와 기록란이 충분한가
+- 모바일 검증을 완료 조건으로 오표기하지 않았는가
+- 실행 전 항목을 완료로 체크하지 않았는가
+
+18. 문서와 코드 대조 검수
+- CreateAssetMenu 경로
+- Validator 메뉴 경로
+- Sample 메뉴 경로
+- Namespace
+- Assembly 이름
+- MaxStackCount 기본값
+- duration 정규화
+- TimeEpsilon
+- StackCount 시간 초기화
+- 완전 소진 StackCount 1
+- Previous 값
+- Warning/Error 조건
+- 문서가 코드 충돌을 숨기지 않는가
+
+19. 성능 정적 검수
+- StackCount Tick에서 스택 수 비례 반복문 없음
+- Runtime 핵심 경로 불필요한 LINQ 없음
+- Snapshot 할당이 Known Limitations에 기록됨
+- 프로파일링 없이 공개 API 추가 없음
+- Sample이 Runtime 핵심 구조에 영향 없음
+- 벤치마크 허위 결과 없음
+
+20. 테스트 검수
+- 기존 테스트 삭제 없음
+- 기존 기대값 완화 없음
+- 단계 14 대량 신규 테스트 없음
+- 실제 동작 변경 시에만 최소 회귀 테스트
+- enum 숫자 테스트 유지
+- 전체 테스트 실행 여부를 정직하게 보고
+- 사용자 결과 전 통과로 기록하지 않음
+
+21. 범위 초과 검수
+- ExclusiveGroup
+- Priority
+- IsSaveable
+- 저장/로드
+- 네트워크
+- 자동 ID
+- PlayMode Assembly
+- 모바일 빌드 수행
+- Tick 재설계
+- 저할당 API
+- UPM
+- Git 작업
+- 실제 릴리스 배포
+- 조기 구현 시 영향 범위를 보고한다.
+
+22. 차단 문제
+- 공개 API 변경
+- enum 숫자값 변경
+- serialized field 이름 변경
+- Test/Sample ID 제거
+- 기능 변화가 있는 리팩터링
+- Known Limitations 누락
+- StackCount Tick 기술 부채 은폐
+- Runtime→Editor/Samples 참조
+- 직접 Debug 로그 잔존
+- VERSION 불일치
+- 문서와 코드 불일치
+- 구현되지 않은 기능을 CHANGELOG에 포함
+- 사용자 검증 전 0.1.0 완료 판정
+- 실행 결과 허위 보고
+
+23. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 14
+
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+
+(버전)
+(공개 API 동결)
+(enum 숫자값)
+(Test/Sample ID)
+(직렬화 계약)
+(코드 정리)
+(주석 및 로그)
+(Assembly)
+(README)
+(PUBLIC_API_REFERENCE)
+(KNOWN_LIMITATIONS)
+(CHANGELOG)
+(VERSION)
+(FINAL_VERIFICATION_CHECKLIST)
+(문서와 코드 대조)
+(성능 정적 검토)
+(테스트 회귀)
+(StackCount Tick 기술 부채)
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Existing test suite not executed 또는 사용자 실행 결과
+- Windows IL2CPP Development Build not verified 또는 사용자 결과
+- Validator manual verification not completed 또는 사용자 결과
+- Sample manual verification not completed 또는 사용자 결과
+
+(단계 완료 판정)
+- AI 문서 및 정적 마감 완료 여부
+- 사용자 검증 전 최종 완료 불가
+
+(초기 버전 0.1.0 판정)
+- 사용자 검증 전: 대기
+- 모든 필수 검증 통과 후: 완료 가능

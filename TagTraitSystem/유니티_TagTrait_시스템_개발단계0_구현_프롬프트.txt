@@ -1,0 +1,290 @@
+유니티 TagTrait 시스템 개발 단계 0 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 0
+- 단계 제목: 프로젝트 준비와 정책 고정
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+- 본 프롬프트는 위 두 기준 문서와 함께 사용한다.
+- 기준 충돌 시 다음 우선순위를 따른다.
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌이 발견되면 임의로 해결하지 말고 작업을 중단한 뒤 충돌 내용과 영향 범위를 보고한다.
+
+1. AI 역할
+- Unity 6 프로젝트 구조를 준비하는 Unity C# 개발자로 작업한다.
+- 현재 단계에서는 TagTrait 시스템의 실제 태그 로직을 구현하지 않는다.
+- Runtime Assembly와 EditMode Test Assembly의 참조 구조를 준비한다.
+- Unity Test Framework용 환경 확인 테스트 코드를 작성한다.
+- Unity Editor 내부 컴파일과 Test Runner 실행은 수행했다고 간주하지 않는다.
+- 실제 컴파일과 테스트 실행은 사용자가 Unity에서 수행한다.
+
+2. 확정 개발 환경
+- Unity 버전: Unity 6.0 LTS (6000.0.68f1)
+- API Compatibility Level: .NET Standard 2.1
+- Unity Test Framework: 1.6.0
+- Unity Test Framework는 이미 설치되어 있다.
+- Packages/manifest.json과 Packages/packages-lock.json을 수정하지 않는다.
+- 최소 지원 플랫폼: Windows PC
+- 최종 확장 고려 플랫폼: 모바일
+- 빌드 백엔드 고려 사항: IL2CPP
+
+3. 현재 단계 목표
+- TagTrait 시스템의 최소 폴더 구조를 준비한다.
+- Runtime Assembly Definition을 생성한다.
+- EditMode Test Assembly Definition을 생성하고 Runtime Assembly를 참조하도록 한다.
+- 빈 EditMode 환경 테스트 코드를 작성한다.
+- 기준 문서의 목표 배치 경로를 확인한다.
+- 다음 개발 단계에서 Runtime 코드와 EditMode 테스트를 추가할 수 있는 상태를 만든다.
+
+4. AI 작업 완료 기준
+- 지정된 폴더와 파일이 생성 또는 확인되어 있다.
+- Runtime Assembly Definition 설정이 본 프롬프트와 일치한다.
+- EditMode Test Assembly Definition 설정이 본 프롬프트와 일치한다.
+- 환경 확인용 EditMode 테스트 코드가 작성되어 있다.
+- 실제 Unity 컴파일 및 테스트는 미실행 상태로 명확히 보고한다.
+- 사용자가 Unity에서 확인해야 할 작업을 완료 보고에 명시한다.
+
+5. 개발 단계 최종 완료 기준
+- 사용자가 Unity Editor에서 프로젝트 컴파일 성공을 확인한다.
+- 사용자가 Unity Test Runner의 EditMode에서 환경 확인 테스트 통과를 확인한다.
+- Assembly Definition 참조 오류가 없음을 사용자가 확인한다.
+- AI 작업 완료만으로 개발 단계 0이 최종 완료된 것으로 판정하지 않는다.
+
+6. 생성 및 확인할 폴더 구조
+- 다음 최소 폴더 구조만 준비한다.
+
+(Assets/TagTraitSystem)
+- (Runtime)
+- (Tests)
+-- (EditMode)
+- (Documents)
+
+- 아직 사용하지 않는 다음 폴더는 생성하지 않는다.
+-- (Editor)
+-- (Tests/PlayMode)
+-- (Samples)
+-- (Runtime/Core)
+-- (Runtime/Definitions)
+-- (Runtime/Traits)
+-- (Runtime/Components)
+-- (Runtime/Diagnostics)
+- 위 폴더들은 해당 기능이 처음 도입되는 단계에서 생성한다.
+
+7. 기준 문서 배치 확인
+- 다음 파일이 지정 경로에 존재하는지 확인한다.
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+- 파일이 이미 다른 위치에 있더라도 임의로 복제하여 중복 문서를 만들지 않는다.
+- 안전하게 이동할 수 있고 기존 (.meta) 파일을 함께 보존할 수 있는 경우에만 목표 경로로 이동할 수 있다.
+- 파일이 없거나 이동 여부가 불명확하면 임의로 새 내용을 작성하지 말고 완료 보고에 누락 상태와 사용자가 배치해야 할 목표 경로를 기록한다.
+- 문서 내용은 수정하지 않는다.
+
+8. Runtime Assembly Definition
+
+8.1. 파일
+- 경로:
+-- (Assets/TagTraitSystem/Runtime/TagTraitSystem.Runtime.asmdef)
+
+8.2. Assembly 설정
+- Assembly 이름:
+-- (TagTraitSystem.Runtime)
+- Root Namespace:
+-- (TagTraitSystem.Runtime)
+- 다른 프로젝트 Assembly를 참조하지 않는다.
+- Editor 전용으로 제한하지 않는다.
+- 테스트 Assembly로 설정하지 않는다.
+- Unsafe Code를 활성화하지 않는다.
+- Auto Referenced는 활성 상태로 둔다.
+- Override References는 사용하지 않는다.
+- Define Constraints를 추가하지 않는다.
+- Version Defines를 추가하지 않는다.
+- 플랫폼 제외 또는 포함 설정을 추가하지 않는다.
+
+8.3. 책임
+- Runtime Assembly는 이후 Runtime 코드를 포함한다.
+- Runtime Assembly는 Editor, Tests 또는 Samples Assembly를 참조해서는 안 된다.
+
+9. EditMode Test Assembly Definition
+
+9.1. 파일
+- 경로:
+-- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+
+9.2. Assembly 설정
+- Assembly 이름:
+-- (TagTraitSystem.Tests.EditMode)
+- Root Namespace:
+-- (TagTraitSystem.Tests.EditMode)
+- 다음 Runtime Assembly를 참조한다.
+-- (TagTraitSystem.Runtime)
+- Test Assembly로 설정한다.
+- Unity Test Framework의 Test Assemblies 설정을 사용한다.
+- Editor 플랫폼에서만 포함되도록 설정한다.
+- Unsafe Code를 활성화하지 않는다.
+- Runtime Assembly 이외의 프로젝트 Assembly를 임의로 참조하지 않는다.
+- Define Constraints와 Version Defines를 임의로 추가하지 않는다.
+
+9.3. 참조 방향
+- EditMode Test Assembly는 Runtime Assembly를 참조한다.
+- Runtime Assembly는 EditMode Test Assembly를 참조하지 않는다.
+
+10. 환경 확인용 EditMode 테스트
+
+10.1. 파일
+- 경로:
+-- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystemEnvironmentTests.cs)
+
+10.2. 네임스페이스
+- (TagTraitSystem.Tests.EditMode)
+
+10.3. 테스트 클래스
+- 클래스명:
+-- (TagTraitSystemEnvironmentTests)
+
+10.4. 테스트 메서드
+- 메서드명:
+-- (EnvironmentSetup_WhenTestRuns_Passes)
+
+10.5. 테스트 내용
+- NUnit의 ([Test])를 사용한다.
+- 테스트 본문은 단계 0의 환경 구성이 Test Runner에서 발견되는지 확인하기 위한 최소 테스트로 작성한다.
+- (Assert.Pass())를 사용한다.
+- 실제 TagTrait 데이터 구조 또는 태그 로직을 구현하거나 참조하지 않는다.
+- 테스트 파일에는 불필요한 Setup, TearDown 또는 UnityTest를 추가하지 않는다.
+
+11. 코딩 규칙
+- private 필드는 별도 접두어 없이 camelCase를 사용한다.
+- 중괄호는 BSD 스타일을 사용한다.
+- (var)를 사용하지 않는다.
+- XML 문서 주석은 영어로 작성한다.
+- 일반 코드 주석은 한글로 작성한다.
+- 테스트 메서드 이름은 영어로 작성한다.
+- 기능 구간이 없으므로 환경 확인 테스트에 (#region)을 억지로 추가하지 않는다.
+- Nullable Reference Type을 도입하지 않는다.
+
+12. 기존 파일 처리
+- 작업 전 (Assets/TagTraitSystem) 이하의 기존 폴더와 파일을 확인한다.
+- 같은 목적의 Assembly Definition이나 테스트 파일이 이미 있으면 중복 생성하지 않는다.
+- 기존 파일 설정이 본 프롬프트와 다르면 즉시 덮어쓰지 않는다.
+- 차이점, 예상 영향 범위 및 권장 수정안을 보고한다.
+- 관련 없는 기존 Assembly Definition, 테스트, 프로젝트 코드 또는 설정을 수정하지 않는다.
+- 기존 공개 API는 현재 단계에서 존재하지 않는 것이 정상이다.
+
+13. .meta 파일 처리
+- (.meta) 파일을 수동으로 생성하지 않는다.
+- 임의 GUID를 작성하지 않는다.
+- Unity Editor가 필요한 (.meta) 파일을 생성하도록 둔다.
+- 이미 존재하는 (.meta) 파일은 수정하거나 삭제하지 않는다.
+- 파일 이동이 필요한 경우 기존 (.meta) 파일을 분리하거나 유실하지 않는다.
+
+14. 작업 절차
+- 1. (Assets/TagTraitSystem) 이하의 현재 구조를 확인한다.
+- 2. 기준 문서의 존재 위치를 확인한다.
+- 3. 최소 폴더 구조를 생성한다.
+- 4. Runtime Assembly Definition을 생성하거나 기존 설정을 검토한다.
+- 5. EditMode Test Assembly Definition을 생성하거나 기존 설정을 검토한다.
+- 6. 환경 확인용 EditMode 테스트 코드를 작성한다.
+- 7. 생성 및 수정한 파일을 정적으로 검토한다.
+- 8. 실제 Unity 컴파일과 테스트를 실행하지 않았음을 명시한다.
+- 9. 사용자가 Unity에서 수행해야 할 검증 절차를 보고한다.
+
+15. 현재 단계 비범위
+- 실제 TagID, TagCategory, StackPolicy 또는 TagChangeReason 구현
+- TagDefinition 구현
+- TagInstance 구현
+- TagTraitSO 구현
+- TagContainer 구현
+- 태그 조회, 추가, 제거, 실행 및 시간 처리
+- Trait 생명주기
+- 태그 변경 이벤트
+- Diagnostics
+- Editor Validator
+- PlayMode 테스트
+- Sample 코드, 에셋 또는 Scene
+- README 작성
+- Git commit 또는 Git tag 생성
+- Unity Package 설치 또는 Package manifest 수정
+- ProjectSettings 변경
+- 실제 Unity Editor 테스트 실행
+
+16. 금지 사항
+- 전체 시스템을 한 번에 생성하지 않는다.
+- 단계 1 이후의 타입을 미리 생성하지 않는다.
+- 빈 폴더를 전체 권장 구조대로 미리 생성하지 않는다.
+- 기준 문서를 임의로 재작성하지 않는다.
+- 패키지 파일을 수정하지 않는다.
+- (.meta) 파일을 수동 생성하지 않는다.
+- 기존 Assembly Definition을 이유 없이 변경하지 않는다.
+- 테스트를 실제 실행하지 않고 통과했다고 보고하지 않는다.
+- Unity 컴파일을 확인하지 않고 오류가 없다고 단정하지 않는다.
+
+17. 작업 중단 및 보고 조건
+- 같은 이름의 Assembly Definition이 다른 경로에 이미 존재하는 경우
+- 기존 Assembly 참조 구조와 본 프롬프트가 충돌하는 경우
+- 기준 문서의 파일명이 다르거나 여러 사본이 존재하여 기준 문서를 확정할 수 없는 경우
+- Test Framework가 설치되어 있지 않거나 버전이 확인된 조건과 다른 경우
+- 기존 프로젝트 설정을 변경하지 않으면 Assembly를 구성할 수 없는 경우
+- 현재 단계 밖의 코드 수정이 필요한 경우
+- 위 상황에서는 임의로 해결하지 말고 문제, 선택지, 권장안 및 영향 범위를 보고한다.
+
+18. 완료 보고 형식
+- 다음 형식으로 결과를 보고한다.
+
+(완료한 개발 단계)
+- 개발 단계 0 - 프로젝트 준비와 정책 고정
+
+(생성한 폴더)
+- 경로 목록
+
+(생성한 파일)
+- 경로 목록
+
+(수정한 파일)
+- 경로 목록
+- 수정 이유
+
+(기존 파일과의 충돌)
+- 없음 또는 상세 내용
+
+(Assembly Definition 설정)
+- Runtime Assembly 이름
+- Runtime Root Namespace
+- EditMode Test Assembly 이름
+- EditMode Test Root Namespace
+- Assembly 참조 방향
+- Test Assembly 설정 여부
+
+(작성한 테스트)
+- 파일명
+- 클래스명
+- 테스트 메서드명
+
+(정적 검토 결과)
+- 확인한 항목
+- 발견한 문제
+
+(Unity 사용자 확인 필요)
+- Unity Editor에서 컴파일 확인
+- Test Runner의 EditMode에서 (EnvironmentSetup_WhenTestRuns_Passes) 실행
+- 테스트 통과 여부 확인
+- Assembly 참조 오류 확인
+- Unity가 생성한 (.meta) 파일 확인
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(설계 변경)
+- 없음 또는 상세 내용
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 사용자 검증 통과 후: 개발 단계 1 진행 가능

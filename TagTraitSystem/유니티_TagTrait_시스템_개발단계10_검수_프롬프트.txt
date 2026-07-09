@@ -1,0 +1,401 @@
+유니티 TagTrait 시스템 개발 단계 10 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 10
+- 단계 제목: 영구 태그 StackCount
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 수정된 개발 단계 1 구현 및 검수 프롬프트
+-- 개발 단계 10 구현 프롬프트
+-- 개발 단계 0~9 완료 기록
+-- 개발 단계 10 구현 결과 보고
+- 본 검수는 새 기능을 임의로 추가하지 않는다.
+- 문제가 있으면 심각도, 영향 범위, 수정 파일 및 권장안을 먼저 보고한다.
+
+1. 검수 목적
+- MaxStackCount의 설정 원본이 TagDefinition에만 있는지 확인한다.
+- 영구 StackCount의 증가, 감소, 마지막 제거가 확정 계약과 일치하는지 확인한다.
+- 최대치 도달이 정상 no-op로 처리되는지 확인한다.
+- 비정상 기존 데이터가 스택 수와 무관하게 완전 제거되는지 확인한다.
+- 단계 11 소멸 StackCount 기능이 조기 구현되지 않았는지 확인한다.
+- 이전 단계 이벤트, Trait, 재진입 및 시간 정책의 회귀를 확인한다.
+
+2. 검수 대상
+- (Assets/TagTraitSystem/Runtime/Definitions/TagDefinition.cs)
+- (Assets/TagTraitSystem/Runtime/Core/TagInstance.cs)
+- (Assets/TagTraitSystem/Runtime/Components/TagContainer.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagDefinitionTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerPermanentStackCountTests.cs)
+- 단계 10에서 수정한 기존 테스트
+- 단계 10 구현 결과 보고
+
+3. 선행 데이터 계약 검수
+- TagDefinition에 다음이 있는지 확인한다.
+-- ([SerializeField] private int maxStackCount = 1;)
+-- (public int MaxStackCount => maxStackCount;)
+- MaxStackCount 기본값이 1인지 확인한다.
+- StackPolicy.StackCount에서만 동작에 사용하는지 확인한다.
+- 다른 정책에서는 값을 보존하되 해당 정책 실행을 차단하지 않는지 확인한다.
+- MaxStackCount == 1을 유효하게 취급하는지 확인한다.
+- TagInstance에 MaxStackCount 필드, 복제값, public 프로퍼티 또는 override 상태가 없는지 확인한다.
+- 오브젝트별 최대치나 Trait 기반 보정이 없는지 확인한다.
+
+4. 유효하지 않은 최대치 검수
+- StackPolicy.StackCount && MaxStackCount < 1을 잘못된 데이터로 처리하는지 확인한다.
+- TagAdd와 PerishableTagAdd가 Error 후 false인지 확인한다.
+- 상태, Trait, 이벤트가 없는지 확인한다.
+- MaxStackCount == 1은 오류 로그가 없는지 확인한다.
+- TagSub 복구 제거는 invalid maximum 때문에 차단되지 않는지 확인한다.
+- 단계 12 교체 대상 한글 주석과 영어 로그 문구를 확인한다.
+
+5. 최초 추가 검수
+- 미보유 정상 StackCount 태그가 StackCount 1로 추가되는지 확인한다.
+- MaxStackCount == 1이어도 최초 추가가 성공하는지 확인한다.
+- OnAdd 후 OnTagAdded 순서인지 확인한다.
+- Reason이 Added인지 확인한다.
+- PreviousStackCount가 0인지 확인한다.
+- 최초 추가에서 StackIncreased가 발생하지 않는지 확인한다.
+
+6. 영구 중복 TagAdd 조건
+- 같은 ID, 같은 Definition 참조인지 확인한다.
+- 기존 Instance가 영구인지 확인한다.
+- StackPolicy.StackCount인지 확인한다.
+- MaxStackCount >= 1인지 확인한다.
+- 정상 데이터인지 확인한다.
+- 같은 ID 다른 Definition은 Error/false인지 확인한다.
+- None, Refresh, MaxDuration 영구 중복은 기존처럼 false인지 확인한다.
+- 소멸 태그에는 단계 7 전환 분기가 우선하는지 확인한다.
+
+7. 스택 증가 검수
+- StackCount < MaxStackCount일 때 호출당 정확히 1 증가하는지 확인한다.
+- 기존 Instance 참조를 유지하는지 확인한다.
+- Duration, RemainingTime, IsPerishable, Definition을 변경하지 않는지 확인한다.
+- 새 Instance 생성이나 Dictionary 교체가 없는지 확인한다.
+- true를 반환하는지 확인한다.
+- OnAdd, OnRemove, OnActivate가 없는지 확인한다.
+
+8. 최대치 도달 검수
+- StackCount >= MaxStackCount에서 false인지 확인한다.
+- 상태 변화가 없는지 확인한다.
+- Trait 호출이 없는지 확인한다.
+- Added, Updated, Removed 이벤트가 없는지 확인한다.
+- Error 또는 일반 로그가 없는지 확인한다.
+- StackCount > MaxStackCount여도 자동 축소하지 않는지 확인한다.
+- 자동 StackDecreased가 없는지 확인한다.
+- int.MaxValue를 임의 게임 디자인 상한으로 사용하지 않는지 확인한다.
+
+9. TagInstance 내부 API 검수
+- internal TryIncreaseStackCount가 존재하는지 확인한다.
+- Definition.MaxStackCount를 직접 조회하는지 확인한다.
+- MaxStackCount < 1 또는 StackCount >= MaxStackCount에서 false인지 확인한다.
+- 성공 시 1만 증가하는지 확인한다.
+- internal TryDecreaseStackCount가 존재하는지 확인한다.
+- StackCount <= 1에서 false인지 확인한다.
+- StackCount > 1에서 1만 감소하는지 확인한다.
+- Trait, 이벤트, 로그, Dictionary, 재진입 책임이 들어가지 않았는지 확인한다.
+
+10. StackIncreased 이벤트 검수
+- 성공한 중복 TagAdd에서 OnTagUpdated가 한 번인지 확인한다.
+- Reason이 StackIncreased인지 확인한다.
+- Source가 TagAdd 전달값인지 확인한다.
+- Previous 값이 증가 직전 실제 상태인지 확인한다.
+- 콜백에서 증가된 동일 Instance가 보이는지 확인한다.
+- Added와 Removed가 없는지 확인한다.
+- 구독자 예외 후 상태 유지, 다음 구독자 호출, true 및 가드 해제를 확인한다.
+
+11. 정상 영구 TagSub 검수
+- StackCount > 1이면 한 스택만 감소하는지 확인한다.
+- 태그가 Dictionary에 남는지 확인한다.
+- 동일 Instance인지 확인한다.
+- true를 반환하는지 확인한다.
+- OnRemove가 없는지 확인한다.
+- OnTagUpdated 한 번과 StackDecreased인지 확인한다.
+- StackCount == 1이면 기존 완전 제거 경로인지 확인한다.
+- 마지막 제거에서 StackDecreased가 없는지 확인한다.
+
+12. StackDecreased 이벤트 검수
+- Source가 TagSub 전달값인지 확인한다.
+- PreviousStackCount가 감소 직전 값인지 확인한다.
+- PreviousDuration과 PreviousRemainingTime이 실제 값인지 확인한다.
+- 콜백 시 태그가 여전히 존재하고 감소된 값으로 조회되는지 확인한다.
+- Added, Removed, Trait 생명주기가 없는지 확인한다.
+- 예외 후 감소 상태 유지와 가드 해제를 확인한다.
+
+13. 마지막 스택 제거 검수
+- StackCount 1에서 StackCount를 0으로 만들지 않는지 확인한다.
+- 정상 실행형 태그에서 OnRemove 후 Dictionary 제거인지 확인한다.
+- OnTagRemoved 한 번인지 확인한다.
+- Reason이 Removed인지 확인한다.
+- PreviousStackCount가 1인지 확인한다.
+- OnTagUpdated와 StackDecreased가 없는지 확인한다.
+- 유효한 Keyword 태그는 Trait 없이 제거되는지 확인한다.
+
+14. 비정상 데이터 복구 검수
+- 다음 비정상 데이터가 다중 스택이어도 한 번에 완전 제거되는지 확인한다.
+-- 빈 이름
+-- Keyword + Trait
+-- 비Keyword + Trait null
+-- StackCount 정책 + MaxStackCount < 1
+-- 기존 복구 대상 데이터
+- 스택을 하나만 감소시키지 않는지 확인한다.
+- OnRemove를 호출하지 않는지 확인한다.
+- Dictionary에서 완전 제거하는지 확인한다.
+- Removed 이벤트 한 번인지 확인한다.
+- StackDecreased와 Updated가 없는지 확인한다.
+- 제거 전 StackCount를 임의 보정하지 않는지 확인한다.
+- null, None, 같은 ID 다른 Definition 요청은 복구 제거로 오인하지 않는지 확인한다.
+
+15. 소멸→영구 전환 검수
+- 소멸 StackCount 태그에 TagAdd 시 단계 7 전환만 수행하는지 확인한다.
+- 같은 호출에서 스택 증가가 없는지 확인한다.
+- StackCount를 보존하는지 확인한다.
+- ChangedToPermanent만 발생하는지 확인한다.
+- 다음 TagAdd부터 최대치 상한을 적용하는지 확인한다.
+- MaxStackCount < 1이면 전환 전에 Error/false인지 확인한다.
+
+16. PerishableTagAdd 및 단계 11 경계
+- 새 소멸 StackCount 태그는 유효 최대치에서 StackCount 1로 추가 가능한지 확인한다.
+- MaxStackCount < 1이면 추가하지 않는지 확인한다.
+- 기존 소멸 StackCount의 중복 PerishableTagAdd는 아직 false인지 확인한다.
+- 기존 영구 StackCount에 PerishableTagAdd는 false인지 확인한다.
+- 소멸 StackCount TagSub는 아직 전체 제거인지 확인한다.
+- 스택별 시간, 다중 스택 Tick, 초과시간 전달이 구현되지 않았는지 확인한다.
+
+17. 재진입 검수
+- 증가와 감소 시작부터 Updated 종료까지 processingTagIDs가 유지되는지 확인한다.
+- Updated 콜백의 같은 ID 변경이 차단되는지 확인한다.
+- 다른 ID 변경과 조회가 허용되는지 확인한다.
+- 최대치 no-op와 invalid maximum 실패에서도 가드가 해제되는지 확인한다.
+- 구독자 예외 후 가드가 남지 않는지 확인한다.
+
+18. Tick 회귀 검수
+- 영구 스택 증감이 tickModifiedTagIDs에 기록되지 않는지 확인한다.
+- tickStartRemainingTimes를 수정하지 않는지 확인한다.
+- Refresh와 MaxDuration Tick 정책이 변경되지 않았는지 확인한다.
+- Tick 중 다른 ID 콜백에서 영구 StackCount 변경이 허용되는지 확인한다.
+- 소멸→영구 전환 후 IsPerishable 재확인 동작이 유지되는지 확인한다.
+
+19. 테스트 검수 - 데이터
+- 기본 MaxStackCount 1
+- 직렬화값 보존
+- 다른 정책에서 값 보존
+- TagInstance 복제 상태 없음
+- SerializedObject 필드명이 maxStackCount와 일치
+- Unity Object TearDown 정리
+
+20. 테스트 검수 - 증가와 최대치
+- 최초 추가
+- 호출당 1 증가
+- 여러 성공 호출
+- 동일 Instance
+- Trait 미호출
+- StackIncreased 이벤트
+- Previous 값과 Source
+- 최대치 도달 false
+- 최대치 도달 무로그
+- 최대치 초과 자동 축소 없음
+- MaxStackCount 1 중복 실패
+- MaxStackCount < 1 Error/false
+- 이벤트 및 상태 무변경
+
+21. 테스트 검수 - 감소와 제거
+- 3→2
+- 2→1
+- 태그 유지
+- StackDecreased
+- 중간 OnRemove 없음
+- 1에서 완전 제거
+- Removed
+- StackCount 0 미설정
+- 초과 상태에서도 한 번에 하나만 감소
+
+22. 테스트 검수 - 비정상 데이터
+- Keyword + Trait 다중 스택 완전 제거
+- 비Keyword + null 다중 스택 완전 제거
+- 빈 이름 다중 스택 완전 제거
+- invalid maximum 다중 스택 완전 제거
+- OnRemove 미호출
+- Removed 한 번
+- StackDecreased 없음
+- 제거 전 StackCount 보정 없음
+
+23. 테스트 검수 - 정책 및 전환
+- 영구 None/Refresh/MaxDuration 중복 실패
+- 소멸 StackCount 중복 PerishableTagAdd 단계 11 전 실패
+- 영구 StackCount에 PerishableTagAdd 실패
+- 소멸 StackCount TagSub 전체 제거
+- 전환 호출의 스택 증가 없음
+- 다음 호출의 최대치 적용
+- invalid maximum 전환 차단
+
+24. 기존 테스트 변경 검수
+- 임시 StackCount 중복 실패 테스트만 의도적으로 변경했는지 확인한다.
+- 증가 성공 테스트의 MaxStackCount를 2 이상으로 명시했는지 확인한다.
+- 기본값 1 때문에 잘못된 성공 기대가 생기지 않았는지 확인한다.
+- None, Refresh, MaxDuration 실패 기대를 유지하는지 확인한다.
+- 단계 11 이전 소멸 StackCount 실패 기대를 유지하는지 확인한다.
+- 테스트를 삭제하거나 범용적으로 완화하지 않았는지 확인한다.
+- 완료 보고에 변경 전후와 이유가 기록되었는지 확인한다.
+
+25. 코드 스타일 검수
+- private camelCase
+- BSD 중괄호
+- var 없음
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- NRT 미도입
+- 불필요한 LINQ, 할당, region 없음
+- public 테스트 전용 API 없음
+
+26. 범위 초과 검수
+- 소멸 StackCount 중복 증가
+- 소멸 스택별 Duration
+- 소멸 TagSub 한 스택 감소
+- 큰 Tick 다중 스택 소모
+- 초과시간 전달
+- Runtime 최대치 override
+- 오브젝트별 최대치
+- Trait 기반 최대치 변경
+- 자동 최대치 축소
+- 스택 증감 Trait 재호출
+- 영구→소멸
+- 일반 Tick Updated
+- 강제 Expired
+- Editor Validator
+- 완성된 TagDiagnostics
+- Sample
+- 하나라도 조기 구현되면 영향 범위를 보고한다.
+
+27. 차단 문제
+- MaxStackCount가 TagDefinition에 없음
+- MaxStackCount 원본이 TagInstance 또는 오브젝트별 상태에 있음
+- 기본값이 1이 아님
+- MaxStackCount 1을 오류로 처리
+- 최대치 도달에서 상태·이벤트·로그 변화
+- 기존 초과 상태 자동 축소
+- 한 호출에서 여러 스택 증감
+- 중간 감소에서 OnRemove 호출
+- 마지막 제거에서 Updated와 Removed 동시 발생
+- 비정상 데이터를 한 스택씩 감소
+- 전환과 증가를 같은 호출에서 수행
+- 단계 11 기능 조기 구현
+- 이전 단계 Refresh/MaxDuration/Tick 정책 파괴
+- 실행 결과 허위 보고
+
+28. 수정 권장 문제
+- MaxStackCount 테스트 일부 누락
+- Source 또는 Previous 값 검증 누락
+- 완료 보고에서 조건부 TagDefinition 수정 여부 누락
+- 로그 교체 주석 누락
+- 테스트 이름 또는 정리 방식 불일치
+- 불필요한 리팩터링이나 코드 중복
+
+29. 사용자 수동 검증 항목
+- Unity Editor 컴파일 확인
+- TagDefinition Inspector의 Max Stack Count 기본값 1 확인
+- 서로 다른 TagDefinition의 Max Stack Count 값 저장 확인
+- 단계 10 EditMode 테스트 실행
+- 단계 0~9 전체 회귀 테스트 실행
+- 최대치 도달 시 Console Error가 없는지 확인
+- invalid maximum 테스트의 예상 Error 확인
+- 단계 11 기능이 아직 동작하지 않는지 경계 확인
+
+30. 결과 보고 검수
+- 생성 및 수정 파일이 정확히 보고되었는지 확인한다.
+- 조건부 TagDefinition 및 TagDefinitionTests 수정 여부가 보고되었는지 확인한다.
+- MaxStackCount 원본 위치와 기본값이 보고되었는지 확인한다.
+- 영구 증가, 감소, 마지막 제거 계약이 보고되었는지 확인한다.
+- 비정상 데이터 완전 제거가 보고되었는지 확인한다.
+- 수정한 기존 테스트와 이유가 보고되었는지 확인한다.
+- 다음 상태 또는 동일 의미가 포함되었는지 확인한다.
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+
+31. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 10 - 영구 태그 StackCount
+
+(차단 문제)
+- 없음 또는 파일, 문제, 영향 범위
+
+(수정 권장 문제)
+- 없음 또는 파일, 문제, 권장 수정
+
+(범위 초과)
+- 없음 또는 조기 구현 내용
+
+(MaxStackCount 데이터 검수)
+- TagDefinition 원본
+- 기본값
+- TagInstance 복제 없음
+- 오브젝트별 override 없음
+
+(유효성 검수)
+- MaxStackCount < 1
+- MaxStackCount == 1
+- 최대치 초과 상태
+
+(최초 추가 검수)
+- 상태
+- Trait
+- Added 이벤트
+
+(영구 스택 증가 검수)
+- 적용 조건
+- 호출당 증가
+- 최대치
+- Trait
+- StackIncreased
+
+(영구 스택 감소 검수)
+- 중간 감소
+- 마지막 제거
+- StackDecreased와 Removed
+
+(비정상 데이터 복구 검수)
+- 완전 제거
+- OnRemove 생략
+- 이벤트
+
+(전환 및 단계 11 경계)
+- 소멸→영구
+- 소멸 StackCount 보류
+
+(재진입 및 Tick 회귀)
+- processingTagIDs
+- Tick 추적 구조
+
+(테스트 검수)
+- 데이터
+- 증가
+- 최대치
+- 감소
+- 제거
+- 비정상 복구
+- 정책 분리
+- 재진입
+
+(기존 기능 회귀)
+- 단계 0~9
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(사용자 확인 필요)
+- 남은 수동 검증
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 10 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 판단 근거

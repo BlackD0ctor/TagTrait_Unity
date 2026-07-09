@@ -1,0 +1,118 @@
+유니티 TagTrait 시스템 개발 단계 6-2 검수 프롬프트
+
+0. 검수 대상
+- 개발 단계 6-2 - Tick과 소멸 태그 만료
+- Runtime/Core/TagInstance.cs
+- Runtime/Components/TagContainer.cs
+- Tests/EditMode/TagContainerTickTests.cs
+- 단계 6-2 구현 결과 보고
+- 단계 0~6-1 기존 기능 회귀
+
+1. 시간 정책 검수
+- Tick(float deltaTime) 시그니처가 정확한가
+- Update/FixedUpdate가 없는가
+- deltaTime을 정규화하지 않는가
+- 감소 후 RemainingTime을 정규화하지 않는가
+- Duration이 변하지 않는가
+- TimeEpsilon 0.0001f를 사용하는가
+- 만료 확정 시 RemainingTime을 0f로 만드는가
+
+2. TagInstance 검수
+- internal DecreaseRemainingTime이 있는가
+- RemainingTime만 감소하는가
+- 음수 결과를 0으로 제한하는가
+- Trait과 이벤트 책임이 없는가
+- 단계 11 리팩터링 예정이 보고되었는가
+
+3. Tick 입력 검수
+- 0은 로그 없는 no-op인가
+- 음수/NaN/Infinity는 Error와 전체 no-op인가
+- 잘못된 입력에서 일부 태그가 먼저 변경되지 않는가
+
+4. isTicking 검수
+- private bool isTicking인가
+- 중첩 Tick을 즉시 반환하는가
+- 일반 Add/Sub/Activate를 막지 않는가
+- try-finally에서 반드시 false로 해제하는가
+- 중첩 차단과 후속 독립 Tick 테스트가 있는가
+
+5. 스냅샷 순회 검수
+- Tick 시작 시 Instance 배열을 복사하는가
+- Dictionary를 직접 foreach하지 않는가
+- 처리 전 존재·참조·IsPerishable를 재확인하는가
+- 새 태그는 다음 Tick부터 처리하는가
+- 제거된 태그와 교체된 Instance를 건너뛰는가
+- 순서를 보장한다고 가정하지 않는가
+
+6. 만료 처리 검수
+- Previous 값을 Tick 시작 전에 보관하는가
+- RemainingTime 감소 후 epsilon 이하에서 0으로 확정하는가
+- OnRemove -> 제거 -> OnTagRemoved 순서인가
+- Reason.Expired와 Source null인가
+- 이벤트 Instance가 실제 제거 객체인가
+- OnRemove 시 보유, Removed 콜백 시 미보유인가
+- Trait 예외 후 제거와 이벤트가 계속되는가
+
+7. 제거 helper 검수
+- private 공통 helper인가
+- TagSub와 Tick이 사용하는가
+- 호출자가 가드를 담당하는가
+- TagSub의 Reason.Removed와 source가 보존되는가
+- Tick의 Reason.Expired와 null source가 적용되는가
+- 비정상 데이터 복구 경로가 보존되는가
+
+8. 이벤트 정책
+- 시간이 남는 감소에 모든 변경 이벤트가 없는가
+- 만료에 Removed가 한 번만 발생하는가
+- Updated가 조기 발생하지 않는가
+- TagScan 얕은 스냅샷의 같은 Instance 상태 변화가 관찰 가능한가
+
+9. 재진입 검수
+- 각 ID에 processingTagIDs를 사용하는가
+- 같은 ID 변경은 차단되는가
+- 다른 ID 변경과 조회는 허용되는가
+- 중첩 Tick은 isTicking으로 차단되는가
+- finally에서 모든 가드가 해제되는가
+
+10. 테스트 검수
+- 시간 감소, Duration 불변, 영구 태그 무변화
+- fractional deltaTime 비반올림
+- 잘못된 입력 전체
+- 정확/초과/epsilon 만료
+- Trait·이벤트 순서와 Previous 값
+- Keyword와 예외
+- 컬렉션 변경
+- 중첩 Tick과 후속 Tick
+- 객체 정리
+
+11. 범위 초과
+- Update 자동 Tick
+- Refresh/MaxDuration/StackCount
+- 여러 스택 소모
+- 영구·소멸 전환
+- 일반 감소 Updated
+- 저장/로드
+- Editor Validator/TagDiagnostics
+
+12. 결과 보고 검수
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+- 실행하지 않은 결과를 성공으로 보고하지 않았는가
+
+13. 검수 출력 형식
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+(Tick 입력 검수)
+(RemainingTime 정책 검수)
+(isTicking 검수)
+(스냅샷 순회 검수)
+(만료 및 제거 파이프라인 검수)
+(이벤트·Trait·재진입 검수)
+(테스트 검수)
+(기존 기능 회귀)
+(실행 검증 상태)
+(사용자 확인 필요)
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

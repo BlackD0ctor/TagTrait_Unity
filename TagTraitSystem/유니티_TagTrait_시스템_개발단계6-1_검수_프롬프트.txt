@@ -1,0 +1,87 @@
+유니티 TagTrait 시스템 개발 단계 6-1 검수 프롬프트
+
+0. 검수 대상
+- 개발 단계 6-1 - PerishableTagAdd와 지속시간 정규화
+- Runtime/Components/TagContainer.cs
+- Tests/EditMode/TagContainerPerishableAddTests.cs
+- 단계 6-1 구현 결과 보고
+- 단계 0~5 기존 파일과 테스트의 무단 변경 여부
+
+1. 공개 API와 Definition 검수
+- PerishableTagAdd 시그니처가 정확한가
+- TagAdd와 Definition 검증 규칙이 동일한가
+- 공통 helper가 private인가
+- Keyword/비Keyword/Category.None/공백 이름 정책이 유지되는가
+
+2. duration 검수
+- 유한한 양수만 허용하는가
+- 0, 음수, NaN, 양·음 Infinity를 차단하는가
+- 첫째 자리 AwayFromZero 반올림인가
+- 작은 양수를 최소 0.1f로 보정하는가
+- 정규화가 추가 시 한 번만 수행되는가
+
+3. 초기 상태 검수
+- Duration과 초기 RemainingTime이 같은 정규화값인가
+- StackCount 1, IsPerishable true인가
+- RemainingTime 반복 정규화나 Tick 코드가 조기 추가되지 않았는가
+
+4. 처리 순서 검수
+- Definition 검증
+- duration 정규화
+- 같은 ID 가드
+- Instance 생성과 TryAddInstance
+- OnAdd
+- OnTagAdded
+- finally 가드 해제
+
+5. Trait·이벤트·재진입
+- Keyword는 OnAdd 미호출
+- 비Keyword는 OnAdd 호출
+- OnAdd 예외 후 상태 유지, 이벤트 계속, true
+- Added Previous 값 0/0/0
+- 같은 ID 재진입 차단
+- 다른 ID 변경 허용
+
+6. 중복 임시 정책
+- 기존 영구 또는 소멸 태그가 있으면 false인가
+- 갱신, 전환, 스택 증가가 없는가
+- 같은 ID 다른 Definition은 Error와 false인가
+- 단계 7, 8, 9, 11 수정 예정이 주석과 보고에 명시되었는가
+
+7. 테스트 검수
+- 정상 추가, Keyword, Category.None
+- 반올림, 최소값, midpoint
+- Trait·이벤트 순서와 Source
+- OnAdd 예외
+- 모든 duration 실패값
+- Definition 실패값
+- 중복, Definition 불일치, 재진입
+- TearDown 정리
+
+8. 범위 초과
+- Tick/Update, 시간 감소/만료
+- TimeEpsilon/isTicking
+- 전환/Refresh/MaxDuration/StackCount
+- Updated 실제 발생
+- Editor Validator/TagDiagnostics
+
+9. 결과 보고 검수
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+- 실행하지 않은 결과를 성공으로 보고하지 않았는가
+
+10. 검수 출력 형식
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+(PerishableTagAdd 검수)
+(duration 정규화 검수)
+(초기 Duration/RemainingTime 검수)
+(Trait·이벤트·재진입 검수)
+(테스트 검수)
+(기존 기능 회귀)
+(실행 검증 상태)
+(사용자 확인 필요)
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

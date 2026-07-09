@@ -1,0 +1,333 @@
+유니티 TagTrait 시스템 개발 단계 4 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 4
+- 단계 제목: 태그 변경 이벤트와 동일 TagID 재진입 방지
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- AI 개발 공통 규칙
+-- 원본 개발 설계서
+-- 개발 단계 0~3 완료 기록
+-- 개발 단계 4 구현 프롬프트
+-- 개발 단계 4 구현 결과 보고
+- 새로운 기능을 구현하지 않는다.
+- 수정이 필요하면 문제, 심각도, 수정 범위 및 영향을 먼저 보고한다.
+
+1. 검수 목적
+- 이벤트 데이터와 이벤트 시점이 확정 계약과 일치하는지 확인한다.
+- 구독자 예외가 개별 격리되는지 확인한다.
+- 동일 TagID 재진입이 이벤트 종료까지 차단되는지 확인한다.
+- 다른 TagID 변경과 조회 API가 허용되는지 확인한다.
+- 단계 5 이후 기능 조기 구현 여부를 확인한다.
+- 미실행 결과의 허위 보고를 확인한다.
+
+2. 검수 대상
+- Assets/TagTraitSystem/Runtime/Core/TagChangeEventData.cs
+- Assets/TagTraitSystem/Runtime/Components/TagContainer.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerEventTests.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerReentrancyTests.cs
+- 단계 4에서 생성·수정한 모든 파일
+- 단계 4 구현 결과 보고
+- 단계 0~3 파일의 무단 변경 여부
+
+3. TagChangeEventData 검수
+- public readonly struct인지 확인
+- 네임스페이스가 TagTraitSystem.Runtime.Core인지 확인
+- 다음 getter-only 프로퍼티 확인:
+-- Container
+-- Definition
+-- Instance
+-- Source
+-- Reason
+-- PreviousDuration
+-- PreviousRemainingTime
+-- PreviousStackCount
+- 생성자가 internal인지 확인
+- public setter나 public 생성자가 없는지 확인
+- 생성자 내부 상태 변경·로그가 없는지 확인
+- XML 문서 주석이 영어인지 확인
+- Container가 이벤트 발생 주체를 정확히 보존하는지 확인
+
+4. 공개 이벤트 검수
+- 정확한 선언 확인:
+-- public event Action<TagChangeEventData> OnTagAdded
+-- public event Action<TagChangeEventData> OnTagRemoved
+-- public event Action<TagChangeEventData> OnTagUpdated
+- UnityEvent나 custom delegate로 임의 변경하지 않았는지 확인
+- OnTagUpdated가 현재 단계에서 발생하지 않는지 확인
+- 이벤트 구독 순서를 공개 계약으로 추가하지 않았는지 확인
+
+5. Added 이벤트 검수
+- Dictionary 추가 후 발생하는지 확인
+- 콜백에서 추가 상태 조회가 가능한지 확인
+- Container/Definition/Instance/Source 정확성 확인
+- Reason == Added 확인
+- Previous 값이 0/0/0인지 확인
+- 성공 호출당 최대 한 번인지 확인
+- Removed/Updated가 발생하지 않는지 확인
+- 실패 Add에서 모든 변경 이벤트가 발생하지 않는지 확인
+
+6. Removed 이벤트 검수
+- 제거 직전 Instance와 Previous 값을 보관하는지 확인
+- Dictionary 제거 후 발생하는지 확인
+- 콜백에서 제거 상태 조회가 가능한지 확인
+- Container/Definition/Instance/Source 정확성 확인
+- Reason == Removed 확인
+- Previous 값이 제거 직전 상태인지 확인
+- 성공 호출당 최대 한 번인지 확인
+- Added/Updated가 발생하지 않는지 확인
+- 실패 Sub에서 모든 변경 이벤트가 발생하지 않는지 확인
+
+7. SafeInvoke 검수
+- private 메서드인지 확인
+- Null handler 즉시 반환 확인
+- GetInvocationList 사용 확인
+- 각 구독자 개별 try-catch 확인
+- 한 구독자 예외 후 다음 구독자 호출 확인
+- 예외 비전파 확인
+- 상태 롤백 없음 확인
+- API true 유지 확인
+- 영어 Error 로그 확인
+- 단계 12 교체 한글 주석 확인
+- 전체 delegate를 한 번의 try-catch로 호출하지 않는지 확인
+- 빈 catch가 없는지 확인
+
+8. 재진입 필드와 범위 검수
+- private readonly HashSet<TagID> processingTagIDs 확인
+- 단일 bool 가드가 아닌지 확인
+- TagAdd와 TagSub에 적용되었는지 확인
+- 입력 검증 후 가드를 획득하는지 확인
+- 상태 변경 및 이벤트 종료까지 유지하는지 확인
+- try-finally 사용 확인
+- finally에서 Remove 수행 확인
+- 중간 return과 예외에도 가드가 해제되는지 확인
+
+9. 동일 ID 재진입 검수
+- 같은 ID TagAdd/TagSub 재진입이 false인지 확인
+- 상태 변경이 없는지 확인
+- 추가 이벤트가 없는지 확인
+- 예외가 없는지 확인
+- 현재 단계에서 재진입 Error 로그가 없는지 확인
+- Added 콜백의 같은 ID Sub가 최초 태그를 제거하지 않는지 확인
+- Removed 콜백의 같은 ID Add가 태그를 복구하지 않는지 확인
+
+10. 다른 ID 및 교차 재진입
+- 다른 ID 변경이 허용되는지 확인
+- 각 성공 변경당 이벤트가 한 번인지 확인
+- Alpha 처리 중 Beta 변경이 허용되는지 확인
+- Beta 콜백에서 Alpha 재요청이 차단되는지 확인
+- processingTagIDs가 현재 처리 중인 모든 ID를 유지하는지 확인
+
+11. 조회 API
+- 이벤트 콜백에서 TagScan, TagCheck, TagANDCheck, TagORCheck, TryGetTag가 허용되는지 확인
+- 조회 API가 가드에 등록되지 않는지 확인
+- Added 콜백은 추가 상태를 보는지 확인
+- Removed 콜백은 제거 상태를 보는지 확인
+
+12. TagAdd 회귀 검수
+- 단계 3 입력 검증 유지 확인
+- TryAddInstance 재사용 확인
+- 같은 Definition 중복 false 유지
+- 같은 ID 다른 Definition 차단 유지
+- 중복 실패에 이벤트 없음
+- 단계 7·10 미래 정책 조기 구현 없음
+- source 값이 이벤트 데이터에 그대로 전달되는지 확인
+
+13. TagSub 회귀 검수
+- 단계 3 입력 검증 유지 확인
+- 비정상 기존 데이터 제거 가능 확인
+- 같은 ID 다른 Definition 차단 확인
+- 없는 태그 로그 없이 false 확인
+- 제거 helper 조기 추가 여부 확인
+- Trait.OnRemove 조기 호출 없음
+- source 값이 Removed 데이터에 그대로 전달되는지 확인
+
+14. 이벤트 테스트 검수
+- Added 한 번
+- Added 데이터
+- Source Null/명시값
+- Added 콜백 최종 상태
+- Add 실패 시 이벤트 없음
+- Removed 한 번
+- Removed 데이터
+- Removed 콜백 최종 상태
+- Sub 실패 시 이벤트 없음
+- Updated 미발생
+- 테스트 객체 TearDown 정리
+- 프로젝트 에셋 미생성
+- 순서에 의존하지 않는 검증 사용
+
+15. 예외 격리 테스트 검수
+- 첫 구독자 예외 후 다음 구독자 호출
+- TagAdd 상태 유지와 true
+- TagSub 상태 유지와 true
+- Error 로그
+- 예외 비전파
+- 예외 이후 동일 ID 후속 API 가능
+- LogAssert가 문자열 전체에 과도하게 결합하지 않음
+
+16. 재진입 테스트 검수
+- Added에서 같은 ID Add
+- Added에서 같은 ID Sub
+- Removed에서 같은 ID Add
+- 추가 이벤트 없음
+- 다른 ID 성공
+- 교차 재진입 차단
+- 조회 API 사용
+- 중복 실패 후 가드 해제
+- 없는 Sub 실패 후 가드 해제
+- 같은 ID 처리 후 후속 정상 호출 가능
+
+17. 기존 테스트 및 파일 회귀
+- TagContainerTests 삭제·이동 없음
+- 단계 0~3 테스트 기대값 임의 완화 없음
+- 기존 공개 API 시그니처 불변
+- TagDefinition, TagInstance, enum 불필요 변경 없음
+- Assembly 설정 불필요 변경 없음
+- 단계 3 임시 중복 테스트 유지
+
+18. 코드 스타일
+- var 금지
+- BSD 중괄호
+- private camelCase
+- XML 영어
+- 일반 주석 한글
+- 로그 영어
+- NRT 미도입
+- 불필요한 LINQ/#region/using 없음
+
+19. 범위 초과
+- 다음 조기 구현 금지:
+-- ITagTrait
+-- TraitContext
+-- TagTraitSO 생명주기
+-- TagActivate
+-- 소멸 태그
+-- 시간 정규화
+-- Tick/Update
+-- StackPolicy 실제 처리
+-- OnTagUpdated 실제 발생
+-- 이벤트 큐/비동기
+-- thread lock
+-- 재진입 로그
+-- TagDiagnostics
+-- Editor Validator
+-- PlayMode 테스트
+-- Sample
+
+20. 결과 보고 검수
+- 생성·수정 파일 정확성
+- 공개 이벤트와 이벤트 데이터 보고
+- SafeInvoke와 가드 보고
+- 이벤트 시점 및 Previous 값 보고
+- OnTagUpdated 미발생 보고
+- 단계 7·10 임시 정책 인계
+- 다음 또는 동일 의미 포함:
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+
+21. 사용자 수동 검증
+- Unity 컴파일
+- 단계 0~3 회귀 테스트
+- 이벤트 테스트
+- 재진입 테스트
+- LogAssert
+- 예외 이후 후속 API
+- AI가 실제 확인했다고 주장하지 않는다.
+
+22. 문제 분류
+
+22.1. 차단 문제
+- TagChangeEventData가 외부 변경 가능
+- Container 누락
+- 이벤트를 상태 변경 전에 발생
+- Removed를 제거 전에 발생
+- 전체 delegate 단일 try-catch
+- 구독자 예외 재전파 또는 API false
+- 이벤트 전에 가드 해제
+- 단일 bool로 다른 ID까지 차단
+- 같은 ID 재진입 허용
+- OnTagUpdated 조기 발생
+- 단계 3 중복 정책 무단 변경
+- 테스트 결과 허위 보고
+
+22.2. 수정 권장
+- XML/스타일 위반
+- 테스트 일부 누락
+- 로그 주석 누락
+- 불필요 helper/할당
+- 완료 보고 일부 누락
+
+22.3. 사용자 확인 필요
+- Unity 컴파일
+- EditMode 테스트
+- 예외 로그
+- 회귀 테스트
+
+23. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 4 - 태그 변경 이벤트와 동일 TagID 재진입 방지
+
+(차단 문제)
+- 없음 또는 경로, 문제, 영향
+
+(수정 권장 문제)
+- 없음 또는 경로, 문제, 수정안
+
+(범위 초과)
+- 없음 또는 파일과 기능
+
+(TagChangeEventData 검수)
+- 선언
+- 프로퍼티
+- 생성자
+- 변경 불가성
+
+(이벤트 검수)
+- Added
+- Removed
+- Updated 미발생
+- 데이터와 발생 시점
+
+(SafeInvoke 검수)
+- 구독자 격리
+- 예외 처리
+- API 결과
+- 로그
+
+(재진입 검수)
+- 가드 구조
+- 동일 ID
+- 다른 ID
+- 교차 재진입
+- finally 해제
+
+(테스트 검수)
+- 이벤트
+- 예외 격리
+- 재진입
+- 객체 정리
+
+(기존 기능 회귀)
+- 단계 3 정책
+- 기존 API
+- 기존 테스트
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 결과
+- Test code written, not executed 또는 사용자 결과
+
+(사용자 확인 필요)
+- 남은 수동 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 4 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 근거

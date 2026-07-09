@@ -1,0 +1,24 @@
+TagTraitSystem Changelog
+
+Version 0.1.0
+Status: Initial functional preview
+
+Added
+- Runtime tag container and query API.
+- Trait lifecycle callbacks and activation.
+- Permanent tags and perishable tags.
+- Change events for added, removed, updated, expired, stack, duration, and conversion changes.
+- Duration normalization for perishable tags: positive values are rounded to one decimal place, away from zero, with a minimum of 0.1 seconds.
+- Refresh policy for replacing duration and remaining time.
+- MaxDuration policy for extending remaining time only when needed.
+- Permanent and perishable StackCount policies.
+- Perishable to permanent conversion through TagAdd on a held perishable tag.
+- Runtime diagnostics through TagDiagnostics.
+- Editor TagDefinition validation menu.
+- EditMode unit and integration tests.
+- Sample scripts and manual setup documentation.
+- Known limitations reference.
+
+Notes
+- 0.1.0 is a preview baseline. Public API changes can still occur before 1.0.
+- Numeric enum values and serialized field names should not be changed without a migration plan.

@@ -1,0 +1,419 @@
+유니티 TagTrait 시스템 개발 단계 13-2 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 13-2
+- 원래 개발 단계: 13
+- 단계 제목: Sample 스크립트 및 구성 문서
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 13-1 구현 및 검수 프롬프트
+-- 개발 단계 0~13-1 완료 기록
+- 현재 단계는 13-1 사용자 검증 통과 후 진행한다.
+
+1. 현재 단계 목표
+- TagTrait 시스템 공개 API 사용법을 보여주는 최소 Sample 코드를 제공한다.
+- Sample 전용 Assembly와 네임스페이스를 구성한다.
+- 범용 Sample Controller와 Sample Trait를 제공한다.
+- Sample 전용 TagID 5개를 추가한다.
+- 사용자가 Unity Editor에서 Scene과 ScriptableObject 에셋을 직접 구성할 수 있는 README를 작성한다.
+- Sample 코드에 대한 최소 EditMode 테스트를 작성한다.
+- 실제 Scene 또는 .asset 파일을 직접 만들지 않는다.
+
+2. 생성 및 수정 파일
+
+2.1. 생성
+- (Assets/TagTraitSystem/Samples/TagTraitSystem.Samples.asmdef)
+- (Assets/TagTraitSystem/Samples/Scripts/TagTraitSampleController.cs)
+- (Assets/TagTraitSystem/Samples/Scripts/SampleLogTraitSO.cs)
+- (Assets/TagTraitSystem/Samples/README.txt)
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSampleControllerTests.cs)
+
+2.2. 필수 수정
+- (Assets/TagTraitSystem/Runtime/Core/TagID.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/EnumDefinitionTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+-- Sample Assembly 테스트를 위해 TagTraitSystem.Samples 참조 추가
+
+2.3. 수정 금지
+- Runtime Assembly가 Samples를 참조하도록 변경
+- Editor Assembly가 Samples를 참조하도록 변경
+- Package 파일
+- 실제 Scene
+- 실제 ScriptableObject 에셋
+- TagContainer 공개 API
+
+3. Sample Assembly
+- 이름:
+-- TagTraitSystem.Samples
+- references:
+-- TagTraitSystem.Runtime
+- 네임스페이스:
+-- TagTraitSystem.Samples
+- Runtime과 Editor Assembly가 Samples를 참조하지 않는다.
+- Test Assembly만 Sample 테스트를 위해 참조할 수 있다.
+
+4. Sample 전용 TagID
+- 기존 값은 변경하지 않는다.
+-- None = 0
+-- TestAlpha = 1
+-- TestBeta = 2
+-- TestGamma = 3
+- 다음 값을 추가한다.
+-- SampleKeyword = 100
+-- SamplePermanent = 101
+-- SampleRefresh = 102
+-- SampleMaxDuration = 103
+-- SampleStackCount = 104
+- 각 Sample enum 멤버에 영어 코드 주석을 작성한다.
+- 주석은 해당 값이 Sample 전용이며 실제 프로젝트에서는 사용자가 자신의 ID 체계에 맞게 추가·교체할 수 있음을 알린다.
+- 권장 주석 의미:
+-- Sample-only TagID. Replace or extend it with project-specific IDs as needed.
+- 기존 테스트용 ID 주석은 기존 계약을 유지한다.
+- enum 숫자값은 명시적으로 작성한다.
+
+5. Enum 테스트 수정
+- EnumDefinitionTests에서 기존 값이 유지되는지 확인한다.
+- 새 Sample ID 숫자값을 검증한다.
+- 전체 enum 멤버 개수를 고정하는 테스트는 추가하지 않는다.
+- 테스트 이름 예:
+-- TagID_SampleValues_AreFixed
+- 영어 주석 존재 여부를 Reflection이나 소스 문자열로 테스트하지 않는다.
+- 주석은 정적 검수 항목으로 확인한다.
+
+6. TagTraitSampleController 선언
+- 경로:
+-- Samples/Scripts/TagTraitSampleController.cs
+- 네임스페이스:
+-- TagTraitSystem.Samples
+- 선언:
+-- public sealed class TagTraitSampleController : MonoBehaviour
+- 다음 특성을 사용한다.
+-- [RequireComponent(typeof(TagContainer))]
+- Runtime 기능을 재구현하지 않고 TagContainer 공개 API만 호출한다.
+
+7. 직렬화 필드
+- ([SerializeField] private TagDefinition selectedDefinition;)
+- ([SerializeField] private float duration = 5f;)
+- ([SerializeField] private bool autoTick = true;)
+- 읽기 전용 공개 프로퍼티를 Sample 편의를 위해 임의로 추가하지 않는다.
+- 테스트용 public setter를 추가하지 않는다.
+- SerializedObject를 통해 테스트한다.
+
+8. 내부 참조
+- private TagContainer container;
+- Awake에서 GetComponent<TagContainer>()로 캐시한다.
+- RequireComponent를 사용하더라도 null 방어를 유지할 수 있다.
+- Runtime 상태를 Sample Controller에 복제하지 않는다.
+
+9. 자동 Tick
+- Update에서 autoTick이 true일 때:
+-- container.Tick(Time.deltaTime)
+- TagContainer 자체에 Update를 추가하지 않는다.
+- Sample은 외부 시간 관리자가 Tick을 호출해야 한다는 사용 예를 보여준다.
+- autoTick false에서는 자동 감소가 없다.
+- EditMode 테스트에서 Update 자동 실행을 검증하지 않는다.
+- README에서 Play Mode 수동 확인 항목으로 안내한다.
+
+10. ContextMenu 메서드
+- 다음 public 또는 private ContextMenu 메서드를 제공한다.
+-- AddPermanent()
+-- AddPerishable()
+-- Remove()
+-- Activate()
+-- TickOneSecond()
+-- PrintCurrentTags()
+- ContextMenu 표시 이름은 이해하기 쉬운 영어로 작성한다.
+- 메서드는 selectedDefinition과 container를 사용한다.
+- API source에는 gameObject를 전달한다.
+- 반환값을 Sample 정보 로그로 출력할 수 있다.
+
+11. null 설정 처리
+- selectedDefinition == null이면:
+-- TagDiagnostics.LogWarning
+-- 상태 변경 없이 종료
+- container == null이면:
+-- TagDiagnostics.LogWarning
+-- 종료
+- Sample 설정 누락은 Error가 아니라 Warning이다.
+- Warning은 Editor 또는 Development Build에서 출력된다.
+
+12. Sample 이벤트 구독
+- OnEnable:
+-- OnTagAdded 구독
+-- OnTagUpdated 구독
+-- OnTagRemoved 구독
+- OnDisable:
+-- 동일 핸들러 구독 해제
+- 중복 구독이 발생하지 않게 한다.
+- 이벤트 핸들러에서 TagDiagnostics.Log를 사용한다.
+
+13. Sample 이벤트 로그
+- 다음 정보를 포함한다.
+-- Definition.TagName
+-- TagID
+-- Reason
+-- StackCount
+-- RemainingTime
+-- Source 이름 또는 null 표시
+- 메시지는 영어로 작성한다.
+- Context는 현재 Controller 또는 gameObject를 사용할 수 있다.
+- Runtime 시스템의 로그 정책과 충돌하지 않는다.
+
+14. PrintCurrentTags
+- TagScan을 호출한다.
+- 현재 스냅샷의 각 TagInstance를 로그로 출력한다.
+- 출력:
+-- TagName
+-- TagID
+-- IsPerishable
+-- Duration
+-- RemainingTime
+-- StackCount
+- 내부 Dictionary에 접근하지 않는다.
+- 스냅샷을 수정하지 않는다.
+
+15. SampleLogTraitSO
+- 경로:
+-- Samples/Scripts/SampleLogTraitSO.cs
+- 선언:
+-- public sealed class SampleLogTraitSO : TagTraitSO
+- CreateAssetMenu:
+-- fileName = NewSampleLogTrait
+-- menuName = TagTraitSystem/Samples/Logging Trait
+-- order는 Sample 메뉴 안에서 충돌하지 않는 값
+- 필드:
+-- [SerializeField] private bool activationResult = true;
+- OnAdd:
+-- Context 정보를 TagDiagnostics.Log
+- OnRemove:
+-- Context 정보를 TagDiagnostics.Log
+- OnActivate:
+-- Context 정보를 로그
+-- activationResult 반환
+
+16. Sample Trait 상태 금지
+- ScriptableObject에 다음 Runtime 상태를 저장하지 않는다.
+-- 호출 횟수
+-- 마지막 Target
+-- 마지막 Source
+-- 보유 TagInstance
+-- 오브젝트별 상태
+- Sample Trait는 호출 정보를 로그로만 보여준다.
+- activationResult는 설정 데이터이므로 허용한다.
+
+17. README 구성
+- 경로:
+-- Samples/README.txt
+- 다음 내용을 포함한다.
+-- Sample 목적
+-- Sample Assembly 구조
+-- Sample TagID 설명
+-- 사용자가 자신의 TagID를 추가하거나 Sample ID를 교체할 수 있다는 안내
+-- Scene 수동 구성
+-- SampleLogTraitSO 에셋 생성
+-- 정책별 TagDefinition 생성
+-- Controller 설정
+-- Context Menu 사용
+-- autoTick 사용
+-- 이벤트 및 Trait 로그 확인
+-- 수동 테스트 시나리오
+-- 주의사항과 비범위
+
+18. 정책별 Sample Definition 안내
+- Keyword:
+-- TagID = SampleKeyword
+-- Category = Keyword
+-- Trait = None
+-- StackPolicy = None
+-- MaxStackCount = 1
+- Permanent:
+-- TagID = SamplePermanent
+-- Category = Status
+-- Trait = SampleLogTraitSO
+-- StackPolicy = None
+- Refresh:
+-- TagID = SampleRefresh
+-- Category = Status
+-- Trait = SampleLogTraitSO
+-- StackPolicy = Refresh
+- MaxDuration:
+-- TagID = SampleMaxDuration
+-- Category = Status
+-- Trait = SampleLogTraitSO
+-- StackPolicy = MaxDuration
+- StackCount:
+-- TagID = SampleStackCount
+-- Category = Status
+-- Trait = SampleLogTraitSO
+-- StackPolicy = StackCount
+-- MaxStackCount = 3
+
+19. Scene 수동 구성 절차
+- 빈 GameObject 생성
+- TagContainer 추가
+- TagTraitSampleController 추가
+- SampleLogTraitSO 에셋 생성
+- 정책별 TagDefinition 에셋 생성
+- selectedDefinition 연결
+- duration 설정
+- autoTick 설정
+- Component Context Menu에서 API 실행
+- Console에서 Trait와 이벤트 로그 확인
+- AI가 Scene 또는 에셋을 생성했다고 주장하지 않는다.
+
+20. Sample 수동 시나리오
+- Keyword Add→Activate→Remove
+- Permanent Add→Activate→Remove
+- Refresh Add→Tick→Add→Expire
+- MaxDuration Add→Tick→연장→no-op→Expire
+- StackCount Add→Tick→Add→TagSub→Expire
+- Perishable→Permanent 전환
+- 여러 Controller로 여러 Definition 동시 시험
+- Validator 메뉴 실행
+
+21. Sample 테스트
+- 기존 EditMode Test Assembly에서 작성한다.
+- Test Assembly가 Sample Assembly를 참조한다.
+- 실제 Scene이나 .asset을 만들지 않는다.
+- GameObject에 Controller를 AddComponent하면 RequireComponent로 TagContainer가 존재하는지 확인한다.
+- SerializedObject로 selectedDefinition, duration, autoTick을 설정한다.
+- ContextMenu 메서드를 직접 호출할 수 있는 접근 수준이면 직접 호출한다.
+- private일 경우 SendMessage나 Reflection 남용 대신 internal 테스트 가능 구조를 최소 범위로 검토한다.
+- 테스트 전용 public API는 추가하지 않는다.
+
+22. 필수 Sample 테스트
+- TagID_SampleValues_AreFixed
+- SampleController_WhenAdded_HasTagContainer
+- SampleController_WhenDefinitionIsMissing_LogsWarning
+- SampleController_AddPermanent_ForwardsToContainer
+- SampleController_AddPerishable_ForwardsDurationAndSource
+- SampleController_Remove_ForwardsToContainer
+- SampleController_Activate_ForwardsToContainer
+- SampleController_TickOneSecond_AdvancesContainer
+- SampleController_PrintCurrentTags_DoesNotModifyContainer
+- SampleController_OnEnableAndDisable_ManagesEventSubscriptions
+- SampleLogTrait_OnActivate_ReturnsConfiguredValue
+- SampleLogTrait_DoesNotStoreRuntimeTargetState
+
+23. PlayMode 테스트
+- PlayMode Test Assembly를 추가하지 않는다.
+- Update의 autoTick은 사용자 수동 검증으로 둔다.
+- README에 다음을 명시한다.
+-- Play Mode에서 autoTick이 true일 때 RemainingTime 감소 확인
+-- autoTick false일 때 자동 감소 없음 확인
+
+24. StackCount Tick 기술 부채
+- README 주의사항에 다음을 간단히 기록한다.
+-- Tick 콜백 중 다른 태그의 StackCount를 변경하면 현재 구조에서는 처리 순서에 따라 최종 StackCount가 달라질 수 있다.
+-- 보류 기능 구현 또는 리팩터링 전에 StackCount Tick 처리 구조를 별도로 설계해야 한다.
+- Sample 단계에서 해결하거나 숨기지 않는다.
+
+25. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- Sample TagID 주석 영어
+- 로그 영어
+- 테스트 이름 영어
+- NRT 미도입
+- Input System 의존성 없음
+- 불필요한 LINQ 없음
+
+26. 현재 단계 비범위
+- 실제 Scene 파일
+- 실제 .asset 파일
+- UI
+- Input System
+- 키보드 단축키
+- Custom Inspector
+- Editor 버튼
+- 저장/불러오기
+- 네트워크
+- Addressables
+- 성능 벤치마크
+- 자동 ID 생성
+- StackCount Tick 구조 재설계
+- ExclusiveGroup
+- Priority
+- IsSaveable 동작
+
+27. 금지 사항
+- Runtime이나 Editor가 Samples를 참조하게 하지 않는다.
+- 실제 Scene/YAML/.asset 파일을 직접 만들지 않는다.
+- Sample Trait에 Runtime 상태를 저장하지 않는다.
+- TagContainer 기능을 Sample에서 복제하지 않는다.
+- Input System 패키지를 추가하지 않는다.
+- PlayMode Assembly를 추가하지 않는다.
+- 기존 TagID 숫자값을 변경하지 않는다.
+- Sample TagID에 암시적 숫자값을 사용하지 않는다.
+- Sample용이라는 영어 주석을 누락하지 않는다.
+- 실행하지 않은 테스트를 성공으로 보고하지 않는다.
+
+28. 작업 절차
+- 단계 13-1 완료 상태 확인
+- Sample TagID 추가 및 enum 테스트 수정
+- Sample Assembly 생성
+- Controller 구현
+- Sample Trait 구현
+- 이벤트 로그 구현
+- README 작성
+- Test Assembly Sample 참조 추가
+- Sample EditMode 테스트 작성
+- Runtime/Editor/Sample 참조 방향 검토
+- 실제 에셋/Scene 미생성 확인
+- Unity 검증 미실행 상태 보고
+
+29. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 13-2 - Sample 스크립트 및 구성 문서
+
+(생성한 파일)
+(수정한 파일)
+
+(Sample TagID)
+- 값
+- 영어 주석
+- 기존 값 유지
+
+(Sample Assembly)
+- 이름
+- 참조 방향
+
+(Sample Controller)
+- 필드
+- ContextMenu API
+- Tick
+- 이벤트 구독
+- Source
+
+(Sample Trait)
+- CreateAssetMenu
+- activationResult
+- Runtime 상태 없음
+
+(README)
+- 구성 절차
+- 정책별 에셋
+- 수동 시나리오
+- 기술 부채 안내
+
+(작성한 테스트)
+(사용자 수동 작업)
+- Scene
+- Trait 에셋
+- Definition 에셋
+- Inspector 연결
+- Play Mode 확인
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 14 진행 가능

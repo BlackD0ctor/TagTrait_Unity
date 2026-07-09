@@ -1,0 +1,355 @@
+유니티 TagTrait 시스템 개발 단계 11-2 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 11-2
+- 원래 개발 단계: 11
+- 단계 제목: 소멸 StackCount 다중 스택 Tick
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 11-1 구현 및 검수 프롬프트
+-- 개발 단계 0~11-1 완료 기록
+- 현재 단계는 11-1 사용자 검증 통과 후 진행한다.
+
+1. 현재 단계 목표
+- 소멸 StackCount 태그에 큰 deltaTime을 적용할 때 여러 스택을 연속 소진한다.
+- 초과시간을 다음 스택에 전달한다.
+- 반복문이 아닌 double 기반 전체 잔여시간 산술 계산을 사용한다.
+- 일부 스택이 남으면 최종 상태로 한 번만 StackDecreased Updated를 발생시킨다.
+- 모든 스택이 소진되면 중간 Updated 없이 Expired Removed를 한 번 발생시킨다.
+- 단일 스택과 기존 Refresh/MaxDuration/Tick 정책을 회귀 없이 유지한다.
+
+2. 이전 단계 전제
+- 11-1의 동일 Duration 순차 스택 모델이 존재한다.
+- 소멸 스택 증감 성공 시 RemainingTime = Duration이다.
+- MaxStackCount와 duration 일치 정책이 존재한다.
+- tickModifiedTagIDs 연동이 존재한다.
+- 위 전제가 충족되지 않으면 구현을 시작하지 않는다.
+
+3. 수정 및 생성 파일
+
+3.1. 필수 수정
+- (Assets/TagTraitSystem/Runtime/Core/TagInstance.cs)
+- (Assets/TagTraitSystem/Runtime/Components/TagContainer.cs)
+
+3.2. 생성
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerPerishableStackCountTickTests.cs)
+
+3.3. 조건부 수정
+- 기존 단일 소멸 Tick 테스트가 다중 스택 상태를 가정하지 않도록 명확히 보강한다.
+
+4. 전체 잔여시간 모델
+- Duration = D
+- RemainingTime = R
+- StackCount = S
+- 전체 잔여시간:
+-- Total = R + (S - 1) * D
+- 계산은 double을 사용한다.
+- D, R은 float에서 double로 승격한다.
+- 정수 StackCount 곱셈으로 인한 overflow를 피하도록 double 변환 후 계산한다.
+
+5. Tick 입력 검증
+- deltaTime == 0이면 no-op이다.
+- 음수, NaN, 양·음 Infinity는 Error 후 전체 Tick no-op이다.
+- 기존 단계 6 정책을 유지한다.
+- deltaTime을 정규화하거나 반올림하지 않는다.
+
+6. Tick 처리 대상
+- Tick 시작 스냅샷을 사용한다.
+- 각 항목 처리 전 다음을 재확인한다.
+-- 현재 Dictionary에 같은 ID가 존재
+-- 현재 Instance가 스냅샷 Instance와 같은 참조
+-- tickModifiedTagIDs에 ID가 없음
+-- IsPerishable == true
+- StackPolicy.StackCount가 아니면 기존 단일 소멸 Tick 경로를 유지한다.
+- StackPolicy.StackCount이면 다중 스택 산술 경로를 사용한다.
+
+7. 산술 계산
+- previousDuration, previousRemainingTime, previousStackCount를 Tick 처리 전 저장한다.
+- totalRemaining = (double)RemainingTime + ((double)(StackCount - 1) * Duration)
+- remainingAfter = totalRemaining - deltaTime
+- TimeEpsilon = 기존 단계 상수를 재사용한다.
+- remainingAfter <= TimeEpsilon이면 완전 소진으로 처리한다.
+- remainingAfter > TimeEpsilon이면 최종 StackCount와 RemainingTime을 계산한다.
+
+8. 최종 StackCount 계산
+- remainingAfter가 양수일 때:
+-- finalStackCount = ceil((remainingAfter - TimeEpsilon) / Duration)
+- finalStackCount는 최소 1, 최대 previousStackCount 범위로 방어적으로 제한한다.
+- float 오차 때문에 필요 이상 한 스택이 남지 않도록 epsilon을 반영한다.
+- Duration은 유효한 양수 정규화값이라는 기존 전제를 사용한다.
+- 비정상 Duration <= 0 상태가 발견되면 Error 후 해당 항목을 변경하지 않고 다음 항목으로 진행하거나 기존 안전 정책에 따라 제거하지 않는다.
+- 이 비정상 경로는 단계 12 Diagnostics 교체 대상이다.
+
+9. 최종 RemainingTime 계산
+- finalStackCount > 0일 때:
+-- finalRemaining = remainingAfter - ((finalStackCount - 1) * Duration)
+- 정확한 스택 경계 또는 epsilon 범위에서는 finalRemaining = Duration으로 설정한다.
+- 최종 불변식:
+-- 0 < RemainingTime <= Duration
+-- StackCount >= 1
+- RemainingTime을 소수점 첫째 자리로 재정규화하지 않는다.
+- Tick 결과는 연속 float 상태를 유지한다.
+
+10. 스택 소모 없음
+- finalStackCount == previousStackCount이면:
+-- RemainingTime만 감소
+-- 이벤트 없음
+-- Trait 없음
+- 기존 일반 시간 감소 정책을 유지한다.
+
+11. 일부 스택 소진
+- finalStackCount < previousStackCount이고 finalStackCount >= 1이면:
+-- 기존 TagInstance 유지
+-- StackCount = finalStackCount
+-- RemainingTime = finalRemaining
+-- Duration 유지
+-- IsPerishable 유지
+-- OnRemove 없음
+-- OnTagUpdated 한 번
+-- Reason = StackDecreased
+-- Source = null
+- 중간 소진 스택마다 이벤트를 발생시키지 않는다.
+
+12. 일부 소진 이벤트
+- Previous 값은 Tick 시작 시 해당 항목 처리 직전 상태이다.
+- PreviousDuration = previousDuration
+- PreviousRemainingTime = previousRemainingTime
+- PreviousStackCount = previousStackCount
+- Instance에는 Tick 완료 후 최종 상태가 들어 있다.
+- StackCount 감소량은 PreviousStackCount - Instance.StackCount로 확인 가능하다.
+- OnTagAdded와 OnTagRemoved는 발생시키지 않는다.
+
+13. 모든 스택 소진
+- remainingAfter <= TimeEpsilon이면:
+-- StackCount = 1
+-- RemainingTime = 0f
+-- Duration 유지
+-- IsPerishable = true
+-- OnRemove 한 번
+-- Dictionary 제거
+-- OnTagRemoved 한 번
+-- Reason = Expired
+-- Source = null
+- StackCount = 0을 도입하지 않는다.
+- 중간 StackDecreased Updated를 발생시키지 않는다.
+- Previous 값은 Tick 시작 상태이다.
+
+14. 완전 소진 Trait 및 예외
+- 정상 실행형 태그는 OnRemove를 한 번 호출한다.
+- 유효 Keyword 태그는 Trait 없이 제거한다.
+- 비정상 기존 데이터는 안전정책에 따라 OnRemove를 생략한다.
+- OnRemove 예외가 나도 제거와 Removed 이벤트를 계속한다.
+- 이벤트 구독자 예외가 나도 제거 상태를 유지하고 다음 구독자를 계속 호출한다.
+- Tick 자체에서 예외를 외부로 전파하지 않는 기존 정책을 유지한다.
+
+15. 큰 Tick
+- 하나의 deltaTime이 여러 스택을 소모할 수 있다.
+- 초과시간을 버리지 않는다.
+- 반복문으로 스택마다 순회하지 않는다.
+- MaxStackCount가 매우 커도 계산량이 StackCount에 비례하지 않아야 한다.
+- 큰 Tick 한 번과 동일 총시간의 작은 Tick 여러 번이 가능한 한 같은 최종 상태를 만들어야 한다.
+
+16. 정확한 경계 예시
+- D=5, R=2, S=3, delta=2:
+-- 한 스택 경계
+-- 최종 S=2, R=5
+-- StackDecreased 한 번
+- D=5, R=2, S=3, delta=7:
+-- 두 스택 소진
+-- 최종 S=1, R=5
+-- StackDecreased 한 번
+- D=5, R=2, S=3, delta=12:
+-- 완전 소진
+-- StackCount=1, RemainingTime=0 상태 후 제거
+-- Expired 한 번
+- delta가 경계에서 epsilon 이내인 경우 동일한 경계 결과를 사용한다.
+
+17. Tick 중 외부 StackCount 변경
+- 11-1 정책을 유지한다.
+- 다른 ID 콜백에서 대상의 스택 증감 성공 시 tickModifiedTagIDs에 기록한다.
+- 대상이 아직 처리 전이면 현재 Tick을 건너뛴다.
+- 대상이 이미 처리된 뒤면 이미 소진된 스택은 복구하지 않는다.
+- 처리 순서에 따라 최종 StackCount가 달라질 수 있음을 허용한다.
+- 순서 독립성을 공개 계약으로 보장하지 않는다.
+
+18. 향후 필수 재설계 항목
+- 다음 기술 부채를 완료 보고에 반드시 유지한다.
+-- StackCount Tick 처리 구조 재설계 필요
+- 보류 기능 구현 또는 시스템 리팩터링 전에 별도 설계한다.
+- 후보:
+-- Tick 중 변경 요청 지연 큐
+-- 계산 단계와 콜백 단계 분리
+-- Tick 트랜잭션과 상태 병합
+- 현재 단계에서 구현하지 않는다.
+
+19. nested Tick 및 재진입
+- isTicking 중 nested Tick은 기존처럼 무시한다.
+- 각 ID 처리 중 processingTagIDs를 사용한다.
+- 자기 만료 콜백에서 같은 ID 변경은 차단한다.
+- 다른 ID 변경은 허용한다.
+- finally에서 isTicking, tickModifiedTagIDs, tickStartRemainingTimes를 기존 계약대로 정리한다.
+
+20. 비정상 상태
+- StackCount < 1
+- Duration <= 0
+- RemainingTime < 0 또는 비유한값
+- StackCount > MaxStackCount
+- 단계 11-2에서 자동 보정하지 않는다.
+- 안전하게 처리할 수 없는 항목은 Error를 보고하고 상태를 임의 변경하지 않는다.
+- StackCount > MaxStackCount는 계산 자체는 현재 실제 StackCount 기준으로 수행할 수 있으나 자동 축소 사유로 사용하지 않는다.
+- 상세 진단과 Editor 검증은 단계 12로 남긴다.
+
+21. 필수 테스트 - 기본 산술
+- Tick_WhenPerishableStackCountHasOneStack_DecreasesRemainingTime
+- Tick_WhenDeltaEndsExactlyAtFirstStackBoundary_ActivatesNextStackAtFullDuration
+- Tick_WhenDeltaConsumesOneStackAndPartOfNext_CarriesOverflow
+- Tick_WhenDeltaConsumesMultipleStacks_CarriesOverflow
+- Tick_WhenDeltaIsLessThanRemaining_DoesNotChangeStackCount
+- Tick_WhenStackCountDoesNotChange_DoesNotInvokeUpdated
+
+22. 필수 테스트 - 일부 소진 이벤트
+- Tick_WhenOneOrMoreStacksExpireAndTagRemains_InvokesUpdatedOnce
+- Tick_WhenStacksExpireAndTagRemains_UsesStackDecreasedReason
+- Tick_WhenStacksExpireAndTagRemains_PreservesPreviousTickStartValues
+- Tick_WhenMultipleStacksExpire_DoesNotInvokePerStackEvents
+- Tick_WhenStacksExpireAndTagRemains_DoesNotInvokeOnRemove
+- Tick_WhenCallbackQueries_SeesFinalStackAndRemainingTime
+
+23. 필수 테스트 - 완전 소진
+- Tick_WhenDeltaEqualsTotalRemaining_RemovesTag
+- Tick_WhenDeltaExceedsTotalRemaining_RemovesTag
+- Tick_WhenAllStacksExpire_SetsRemainingZeroBeforeRemoval
+- Tick_WhenAllStacksExpire_KeepsStackCountOneBeforeRemoval
+- Tick_WhenAllStacksExpire_InvokesOnRemoveOnce
+- Tick_WhenAllStacksExpire_InvokesRemovedOnceWithExpiredReason
+- Tick_WhenAllStacksExpire_DoesNotInvokeStackDecreased
+- Tick_WhenAllStacksExpire_UsesTickStartPreviousValues
+
+24. 필수 테스트 - 수치 경계
+- Tick_WhenDeltaIsWithinEpsilonOfBoundary_UsesBoundaryResult
+- Tick_WhenManyStacksAndLargeDelta_ComputesWithoutPerStackLoop
+- Tick_WhenOneLargeTickAndManySmallTicks_AreEquivalent
+- Tick_WhenRemainingTimeIsContinuous_DoesNotRoundAfterTick
+- Tick_WhenBoundaryLeavesOneStack_SetsRemainingToDuration
+
+25. 필수 테스트 - Tick 상호작용
+- Tick_WhenTargetStackMutatesBeforeProcessing_SkipsCurrentTick
+- Tick_WhenTargetStackMutatesAfterProcessing_DoesNotRestoreConsumedStacks
+- Tick_WhenTargetIsRemovedBeforeProcessing_SkipsSnapshotEntry
+- Tick_WhenTargetIsConvertedPermanentBeforeProcessing_SkipsSnapshotEntry
+- Tick_WhenNestedTickCalled_DoesNothing
+- Tick_WhenCallbackChangesDifferentID_AllowsChange
+- Tick_WhenCallbackChangesSameID_BlocksChange
+- Tick_WhenCompleted_ClearsTickTrackingCollections
+
+26. 필수 테스트 - 비정상 상태
+- Tick_WhenDurationIsInvalid_DoesNotMutateAndLogsError
+- Tick_WhenStackCountIsBelowOne_DoesNotMutateAndLogsError
+- Tick_WhenStackCountExceedsMaximum_DoesNotClamp
+- Tick_WhenMalformedTraitDataExpires_DoesNotInvokeInvalidOnRemove
+
+27. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- NRT 미도입
+- 반복문 기반 스택 소모 금지
+- 불필요한 LINQ와 할당 금지
+
+28. 현재 단계 비범위
+- Tick 변경 요청 지연 큐
+- Tick 트랜잭션
+- 계산·콜백 단계 분리
+- 처리 순서 독립성 보장
+- 스택별 duration
+- 스택별 Source
+- Runtime MaxStackCount override
+- 자동 상태 보정
+- Editor Validator
+- TagDiagnostics 완성
+- Sample
+
+29. 금지 사항
+- 스택마다 while/for 반복하여 큰 Tick을 처리하지 않는다.
+- 초과시간을 버리지 않는다.
+- 일부 스택 소진마다 이벤트를 발생시키지 않는다.
+- 완전 소진에서 Updated 후 Removed를 연속 발생시키지 않는다.
+- StackCount를 0으로 만들지 않는다.
+- RemainingTime을 Tick 후 재정규화하지 않는다.
+- 순서 의존성을 해결했다고 허위 보고하지 않는다.
+- 기술 부채 기록을 제거하지 않는다.
+- 실행하지 않은 테스트를 성공으로 보고하지 않는다.
+
+30. 작업 절차
+- 11-1 완료 상태 확인
+- 기존 Tick 분기 구조 분석
+- TagInstance에 다중 스택 최종 상태 적용 internal 메서드 추가
+- double 산술 계산 구현
+- epsilon 경계 처리
+- 일부 소진 이벤트 집계
+- 완전 소진 제거 집계
+- 기존 단일 스택 Tick 회귀 확인
+- Tick 추적 컬렉션 finally 정리 확인
+- 신규 테스트 작성
+- 큰 Tick과 작은 Tick 동등성 정적 검토
+- 기술 부채 기록 유지
+- Unity 검증 미실행 상태 보고
+
+31. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 11-2 - 소멸 StackCount 다중 스택 Tick
+
+(수정/생성 파일)
+- 경로와 이유
+
+(산술 모델)
+- 전체 잔여시간
+- double 계산
+- epsilon
+- 최종 상태 환산
+
+(일부 스택 소진)
+- 최종 StackCount
+- RemainingTime
+- StackDecreased 이벤트 집계
+
+(완전 소진)
+- StackCount 1
+- RemainingTime 0
+- OnRemove
+- Expired
+
+(Tick 상호작용)
+- tickModifiedTagIDs
+- 처리 전후 차이
+- 순서 의존성 허용
+
+(향후 필수 재설계)
+- StackCount Tick 처리 구조 재설계 필요
+- 후보
+- 현재 미구현
+
+(작성한 테스트)
+- 목록
+
+(정적 검토)
+- 큰 Tick
+- 작은 Tick 동등성
+- 반복문 미사용
+- 단계 0~11-1 회귀
+- 범위 초과
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 12 진행 가능

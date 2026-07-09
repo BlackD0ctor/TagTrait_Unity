@@ -1,0 +1,391 @@
+유니티 TagTrait 시스템 개발 단계 12-1 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 12-1
+- 원래 개발 단계: 12
+- 단계 제목: Runtime TagDiagnostics
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- 수정된 (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0~11-2 완료 기록
+- 기준 충돌 우선순위:
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: 수정된 AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌 발견 시 임의로 API나 테스트를 변경하지 말고 문제, 영향 범위 및 권장안을 보고한다.
+
+1. 현재 단계 목표
+- Runtime 로그 출력을 TagDiagnostics로 통합한다.
+- 기존 직접 Debug.LogError 호출을 TagDiagnostics로 교체한다.
+- 데이터 손상 가능성이 있는 Error는 항상 출력한다.
+- 개발 진단용 Warning과 일반 정보 로그는 UNITY_EDITOR 또는 DEVELOPMENT_BUILD에서만 출력한다.
+- 동일 TagID 변경 재진입 차단과 Nested Tick 차단에 Warning을 추가한다.
+- 기존 반환값, 상태 변화, Trait, 이벤트, 재진입 및 Tick 계약을 변경하지 않는다.
+- 비정상 TagInstance 상태를 진단하되 자동 보정하지 않는다.
+
+2. 이전 단계 전제
+- 단계 11-2까지의 Runtime 코드와 테스트가 존재한다.
+- 직접 Debug.LogError 사용부에는 단계 12 교체 대상 한글 주석이 있을 수 있다.
+- processingTagIDs, isTicking, tickModifiedTagIDs, tickStartRemainingTimes가 존재한다.
+- 정상 no-op와 데이터 오류가 기존 코드에서 구분되어 있다.
+- 위 전제가 충족되지 않으면 중복 구조를 만들지 말고 누락 상태를 보고한다.
+
+3. 생성 및 수정 파일
+
+3.1. 생성
+- (Assets/TagTraitSystem/Runtime/Diagnostics/TagDiagnostics.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagDiagnosticsTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerDiagnosticsTests.cs)
+
+3.2. 필수 수정
+- Runtime Assembly 내부에서 직접 Debug.LogError를 사용하는 모든 TagTraitSystem 파일
+- 특히 다음 경로를 조사한다.
+-- Runtime/Components/TagContainer.cs
+-- Runtime/Core/TagInstance.cs
+-- 기타 단계 3~11에서 직접 로그가 추가된 파일
+
+3.3. 수정 금지
+- Assembly Definition
+- Package 파일
+- 공개 TagContainer API
+- TagChangeReason 숫자값
+- 저장 데이터
+- Editor Validator 파일
+- StackCount Tick 구조
+
+4. TagDiagnostics 선언
+- 경로:
+-- (Assets/TagTraitSystem/Runtime/Diagnostics/TagDiagnostics.cs)
+- 네임스페이스:
+-- (TagTraitSystem.Runtime.Diagnostics)
+- 선언:
+-- (public static class TagDiagnostics)
+- 상태를 저장하지 않는 정적 로그 유틸리티로 구현한다.
+- mutable static Enabled 플래그를 추가하지 않는다.
+- 외부 로그 프레임워크를 사용하지 않는다.
+
+5. 공개 API
+- 다음 메서드를 제공한다.
+-- (public static void Log(string message, UnityEngine.Object context = null))
+-- (public static void LogWarning(string message, UnityEngine.Object context = null))
+-- (public static void LogError(string message, UnityEngine.Object context = null))
+- overload를 불필요하게 추가하지 않는다.
+- null message를 별도로 보정하는 공개 계약은 추가하지 않는다.
+- 로그 Context는 전달받은 UnityEngine.Object를 그대로 사용한다.
+
+6. 공통 접두어
+- 모든 메시지 앞에 다음 접두어를 붙인다.
+-- ([TagTraitSystem] )
+- 호출자가 접두어를 직접 넣지 않도록 한다.
+- 접두어가 중복되지 않게 한다.
+- 메시지 본문은 영어로 작성한다.
+
+7. 출력 조건
+- LogError:
+-- 항상 Debug.LogError로 출력한다.
+- LogWarning:
+-- UNITY_EDITOR 또는 DEVELOPMENT_BUILD에서만 Debug.LogWarning으로 출력한다.
+-- 일반 Release Build에서는 아무 동작도 하지 않는다.
+- Log:
+-- UNITY_EDITOR 또는 DEVELOPMENT_BUILD에서만 Debug.Log로 출력한다.
+-- 일반 Release Build에서는 아무 동작도 하지 않는다.
+- 조건부 컴파일은 TagDiagnostics 내부에 집중한다.
+- 호출부마다 전처리 지시문을 반복하지 않는다.
+- Warning/Log 비활성화가 Runtime 상태나 반환값에 영향을 주지 않아야 한다.
+
+8. Error로 유지할 항목
+- Definition null
+- TagID.None
+- 빈 TagName
+- Keyword + Trait
+- 비Keyword + Trait null
+- 같은 TagID의 다른 Definition
+- duration 0 이하
+- duration NaN 또는 Infinity
+- deltaTime 음수
+- deltaTime NaN 또는 Infinity
+- StackPolicy.StackCount && MaxStackCount < 1
+- 서로 다른 duration의 소멸 StackCount 중복 추가
+- 계산 불가능한 TagInstance 상태
+- TagDefinition 또는 TagInstance 손상 가능성이 있는 오류
+- 기존 Error 조건을 Warning으로 낮추지 않는다.
+
+9. 로그하지 않을 정상 no-op
+- StackCount 최대치 도달 또는 초과
+- StackPolicy.None 중복 추가
+- 영구 태그에 PerishableTagAdd
+- Refresh에서 적용할 변화가 없음
+- MaxDuration에서 실제 연장이 없음
+- 존재하지 않는 태그 TagSub
+- 정상 Keyword 태그 TagActivate
+- 이미 제거된 Tick 스냅샷 항목
+- tickModifiedTagIDs 때문에 현재 Tick을 건너뛰는 경우
+- 정상 정책 불충족 false
+- 기존 정상 no-op에 새 Error나 Warning을 추가하지 않는다.
+
+10. 동일 ID 재진입 Warning
+- processingTagIDs에 같은 TagID가 이미 존재하여 변경을 차단할 때 Warning을 한 번 출력한다.
+- 적용 대상:
+-- TagAdd
+-- TagSub
+-- PerishableTagAdd
+-- TagActivate
+- 메시지 예시:
+-- (A reentrant mutation for TagID 'TestAlpha' was blocked.)
+- 실제 TagID 이름을 포함한다.
+- 한 번의 거부된 공개 API 호출에서 Warning은 최대 한 번이다.
+- 결과:
+-- false
+-- 상태 변화 없음
+-- Trait 호출 없음
+-- 이벤트 없음
+- Warning은 Editor 또는 Development Build에서만 출력된다.
+
+11. Nested Tick Warning
+- isTicking == true인 상태에서 Tick이 다시 호출되면 Warning을 한 번 출력한다.
+- 메시지 예시:
+-- (A nested Tick call was blocked.)
+- nested Tick은 기존처럼 즉시 종료한다.
+- 현재 진행 중인 Tick 상태를 변경하지 않는다.
+- 이중 시간 감소를 발생시키지 않는다.
+- Warning은 Editor 또는 Development Build에서만 출력된다.
+
+12. Context 정책
+- Definition 관련 Error:
+-- 가능한 경우 해당 TagDefinition을 Context로 전달한다.
+- TagContainer 상태 오류 또는 재진입 Warning:
+-- 해당 TagContainer 또는 gameObject를 Context로 전달한다.
+- Trait 관련 오류:
+-- 가능한 경우 해당 Trait 또는 Definition을 Context로 전달한다.
+- Context 선택 때문에 공개 API나 상태 구조를 변경하지 않는다.
+- Context가 불명확한 경우 null을 허용한다.
+
+13. 기존 직접 로그 교체
+- Runtime Assembly의 TagTraitSystem 코드에서 직접 사용한 Debug.LogError를 조사한다.
+- 교체:
+-- Debug.LogError(...) → TagDiagnostics.LogError(...)
+- Warning 또는 일반 정보 로그를 새로 도입할 때도 TagDiagnostics를 사용한다.
+- 단계 12 교체 대상이라는 한글 주석은 교체 후 제거할 수 있다.
+- 기존 로그 메시지 의미를 유지하되 접두어는 TagDiagnostics가 추가하도록 정리한다.
+- 교체를 이유로 조건 분기, 반환값, Trait 호출 또는 이벤트 순서를 변경하지 않는다.
+- 단계 12 완료 후 Runtime TagTraitSystem 코드의 직접 Debug 로그는 TagDiagnostics 내부만 남기는 것을 원칙으로 한다.
+
+14. 비정상 TagInstance 상태 진단
+- Tick 또는 상태 변경 과정에서 다음 상태가 발견되면 Error를 출력한다.
+-- Definition == null
+-- StackCount < 1
+-- IsPerishable && Duration <= 0
+-- Duration NaN 또는 Infinity
+-- RemainingTime NaN 또는 Infinity
+-- RemainingTime < 0
+-- StackPolicy.StackCount && MaxStackCount < 1
+-- StackCount > MaxStackCount
+- 기존 코드 경로상 이미 검출 가능한 위치에서 진단한다.
+- 시스템 전체 Container를 순회하는 새 공개 API는 만들지 않는다.
+
+15. 자동 보정 금지
+- 다음 자동 수정은 하지 않는다.
+-- StackCount를 1로 변경
+-- StackCount를 MaxStackCount로 축소
+-- Duration을 0.1로 변경
+-- RemainingTime을 0 또는 Duration으로 강제 보정
+-- 비정상 태그를 진단 목적으로 제거
+-- Definition 필드를 변경
+- Diagnostics는 보고 책임만 가진다.
+
+16. 비정상 상태별 Runtime 처리
+- 계산이 안전하지 않은 상태:
+-- Error
+-- 해당 항목 상태 변경 없음
+-- 해당 항목 처리 중단
+-- 다른 태그 처리는 계속
+- 대상 예:
+-- StackCount < 1
+-- Duration <= 0
+-- Duration/RemainingTime 비유한값
+-- RemainingTime < 0
+- StackCount > MaxStackCount:
+-- Error
+-- 자동 축소 없음
+-- 실제 StackCount 기준 Tick 감소와 TagSub는 계속 가능
+-- 새 스택 추가는 기존 최대치 정책으로 차단
+- MaxStackCount < 1:
+-- 변경 API Error/false
+-- 기존 TagSub 복구 제거 허용
+
+17. 검증 책임 구조
+- TagDiagnostics는 로그 출력만 담당한다.
+- TagContainer는 기존 입력 검증과 상태 분기를 유지한다.
+- TagInstance는 상태 변경과 최소 불변식을 유지한다.
+- 반복되는 검증은 필요하면 TagContainer private 메서드로 정리할 수 있다.
+- 다음 공개 API를 추가하지 않는다.
+-- TagDefinition.IsValid
+-- TagDefinition.Validate()
+-- TagInstance.Validate()
+-- TagContainer.ValidateAll()
+
+18. StackCount Tick 기술 부채
+- 단계 11에서 기록한 다음 항목을 유지한다.
+-- StackCount Tick 처리 구조 재설계 필요
+- 단계 12-1은 진단만 정리하며 Tick 변경 큐, 트랜잭션 또는 콜백 단계 분리를 구현하지 않는다.
+- 처리 순서 의존성을 해결했다고 주장하지 않는다.
+
+19. 필수 테스트 - TagDiagnostics API
+- TagDiagnostics_Log_AddsPrefix
+- TagDiagnostics_LogWarning_AddsPrefix
+- TagDiagnostics_LogError_AddsPrefix
+- TagDiagnostics_Log_ForwardsContext
+- TagDiagnostics_LogWarning_ForwardsContext
+- TagDiagnostics_LogError_ForwardsContext
+- TagDiagnostics_LogError_UsesErrorLogType
+- TagDiagnostics_LogWarning_UsesWarningLogTypeInEditor
+- TagDiagnostics_Log_UsesLogTypeInEditor
+- 테스트는 Unity Editor 환경에서 실행되므로 Warning과 Log 출력을 검증할 수 있다.
+
+20. 필수 테스트 - 기존 Error 통합
+- TagAdd_WhenDefinitionIsNull_UsesTagDiagnosticsError
+- TagAdd_WhenTagIDIsNone_UsesTagDiagnosticsError
+- TagAdd_WhenDefinitionReferenceConflicts_UsesTagDiagnosticsError
+- PerishableTagAdd_WhenDurationIsInvalid_UsesTagDiagnosticsError
+- Tick_WhenDeltaTimeIsInvalid_UsesTagDiagnosticsError
+- PerishableTagAdd_WhenStackDurationDiffers_UsesTagDiagnosticsError
+- StackMutation_WhenMaximumIsInvalid_UsesTagDiagnosticsError
+- 직접 Debug 로그인지 내부 구현까지 Reflection으로 검사하지 않고 출력 계약과 소스 정적 검토로 확인한다.
+
+21. 필수 테스트 - 정상 no-op 무로그
+- TagAdd_WhenPermanentStackIsAtMaximum_DoesNotLog
+- PerishableTagAdd_WhenPerishableStackIsAtMaximum_DoesNotLog
+- PerishableTagAdd_WhenMaxDurationDoesNotExtend_DoesNotLog
+- TagAdd_WhenNonePolicyDuplicateOccurs_DoesNotLog
+- TagSub_WhenTagIsMissing_DoesNotLog
+- TagActivate_WhenValidKeywordTag_DoesNotLog
+
+22. 필수 테스트 - 재진입 Warning
+- TagAdd_WhenSameIDReenters_LogsWarningOnce
+- TagSub_WhenSameIDReenters_LogsWarningOnce
+- PerishableTagAdd_WhenSameIDReenters_LogsWarningOnce
+- TagActivate_WhenSameIDReenters_LogsWarningOnce
+- ReentrantMutation_WhenBlocked_DoesNotChangeStateTraitOrEvents
+- ReentrantMutation_WhenDifferentID_AllowsWithoutWarning
+- ReentrantWarning_IncludesTagID
+- ReentrantWarning_UsesContainerContext
+- SubscriberException_AfterReentrancy_ReleasesGuard
+
+23. 필수 테스트 - Nested Tick Warning
+- Tick_WhenNestedTickCalled_LogsWarningOnce
+- Tick_WhenNestedTickCalled_DoesNotApplyDeltaTwice
+- Tick_WhenNestedTickBlocked_KeepsOuterTickValid
+- Tick_WhenNestedTickBlocked_ReleasesTickStateAfterOuterCompletion
+
+24. 필수 테스트 - 비정상 상태
+- Tick_WhenDefinitionIsNull_LogsErrorAndSkipsEntry
+- Tick_WhenStackCountIsBelowOne_LogsErrorAndDoesNotMutate
+- Tick_WhenPerishableDurationIsInvalid_LogsErrorAndDoesNotMutate
+- Tick_WhenRemainingTimeIsNegative_LogsErrorAndDoesNotMutate
+- Tick_WhenRemainingTimeIsNotFinite_LogsErrorAndDoesNotMutate
+- Tick_WhenStackCountExceedsMaximum_LogsErrorWithoutClamping
+- TagSub_WhenStackCountExceedsMaximum_DecreasesWithoutClampingToMaximum
+- InvalidEntry_DoesNotPreventOtherTagsFromTicking
+
+25. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 본문 영어
+- 테스트 이름 영어
+- NRT 미도입
+- 불필요한 LINQ와 할당 금지
+
+26. 현재 단계 비범위
+- Editor Validator
+- 자동 에셋 검색
+- 자동 수정
+- Custom Inspector
+- 로그 파일 저장
+- 외부 Diagnostic Sink
+- mutable Enabled 설정
+- Runtime 전체 Container 검색
+- Tick 변경 큐
+- Tick 트랜잭션
+- 계산·콜백 단계 분리
+- StackCount Tick 구조 리팩터링
+
+27. 금지 사항
+- 모든 false 반환에 로그를 추가하지 않는다.
+- 최대치 도달에 Warning을 추가하지 않는다.
+- Error를 Editor/Development Build에서만 출력하지 않는다.
+- Warning을 Release 상태 변화와 연결하지 않는다.
+- Diagnostics에서 상태를 보정하지 않는다.
+- 기존 API 반환값을 바꾸지 않는다.
+- Runtime 직접 Debug 로그를 새로 추가하지 않는다.
+- 실행하지 않은 테스트를 통과했다고 보고하지 않는다.
+
+28. 작업 절차
+- 단계 11-2 완료 상태 확인
+- Runtime 직접 Debug 로그 검색
+- TagDiagnostics 구현
+- 기존 Error 교체
+- 재진입 Warning 추가
+- Nested Tick Warning 추가
+- Context 연결
+- 비정상 Instance 진단 보강
+- 자동 보정 없음 확인
+- 테스트 작성
+- 정상 no-op 무로그 회귀 확인
+- 단계 0~11-2 정적 회귀
+- Unity 검증 미실행 상태 보고
+
+29. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 12-1 - Runtime TagDiagnostics
+
+(생성한 파일)
+(수정한 파일)
+
+(TagDiagnostics API)
+- Log
+- LogWarning
+- LogError
+- 접두어
+- Context
+
+(출력 정책)
+- Error 항상 출력
+- Warning/Log Editor 또는 Development Build
+- 정상 no-op 무로그
+
+(직접 로그 교체)
+- 교체 파일
+- 남은 직접 Debug 로그 여부
+
+(재진입 및 Nested Tick)
+- Warning 조건
+- 반환값과 상태 계약
+
+(비정상 상태 진단)
+- 검사 항목
+- 자동 보정 없음
+- 처리 정책
+
+(StackCount Tick 기술 부채)
+- 재설계 필요성 유지
+- 현재 미구현
+
+(작성한 테스트)
+(정적 검토)
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 12-2 진행 가능

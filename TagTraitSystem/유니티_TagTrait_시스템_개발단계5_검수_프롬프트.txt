@@ -1,0 +1,386 @@
+유니티 TagTrait 시스템 개발 단계 5 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 5
+- 단계 제목: Trait 계약, 생명주기와 TagActivate
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- AI 개발 공통 규칙
+-- 원본 개발 설계서
+-- 개발 단계 0~4 완료 기록
+-- 개발 단계 5 구현 프롬프트
+-- 개발 단계 5 구현 결과 보고
+- 새로운 기능을 구현하지 않는다.
+- 수정이 필요하면 문제, 심각도, 수정 범위 및 영향을 먼저 보고한다.
+
+1. 검수 목적
+- Trait 계약과 Context가 확정 구조와 일치하는지 확인한다.
+- TagAdd/TagSub 생명주기 순서를 확인한다.
+- TagActivate 입력 검증, Context, 반환값과 이벤트 부재를 확인한다.
+- Trait 예외 격리와 재진입 가드 유지 범위를 확인한다.
+- Keyword와 비정상 데이터 복구 정책을 확인한다.
+- 단계 6 이후 기능 조기 구현 여부를 확인한다.
+- 미실행 결과의 허위 보고 여부를 확인한다.
+
+2. 검수 대상
+- Assets/TagTraitSystem/Runtime/Core/TraitContext.cs
+- Assets/TagTraitSystem/Runtime/Traits/ITagTrait.cs
+- Assets/TagTraitSystem/Runtime/Traits/TagTraitSO.cs
+- Assets/TagTraitSystem/Runtime/Components/TagContainer.cs
+- Assets/TagTraitSystem/Tests/EditMode/TestTagTraitSO.cs
+- Assets/TagTraitSystem/Tests/EditMode/RecordingTagTraitSO.cs
+- Assets/TagTraitSystem/Tests/EditMode/TraitContextTests.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerTraitLifecycleTests.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerActivationTests.cs
+- 단계 5에서 생성·수정한 모든 파일
+- 단계 5 구현 결과 보고
+- 단계 0~4 파일의 무단 변경 여부
+
+3. TraitContext 검수
+- public readonly struct인지 확인
+- 네임스페이스 확인
+- getter-only 프로퍼티 확인:
+-- Container
+-- Target
+-- Source
+-- Definition
+-- Instance
+- internal 생성자 확인
+- public setter와 public 생성자 부재 확인
+- Target이 container.gameObject인지 확인
+- Source를 Target 대체값으로 사용하지 않는지 확인
+- 전달값 보존 확인
+- XML 문서 주석 영어 확인
+
+4. ITagTrait 검수
+- public interface인지 확인
+- 정확한 메서드 확인:
+-- void OnAdd(TraitContext context)
+-- void OnRemove(TraitContext context)
+-- bool OnActivate(TraitContext context)
+- ref/in/out, async, IEnumerator 부재 확인
+
+5. TagTraitSO 검수
+- ScriptableObject와 ITagTrait 구현 확인
+- OnAdd public virtual void, 빈 기본 구현
+- OnRemove public virtual void, 빈 기본 구현
+- OnActivate public abstract bool
+- CreateAssetMenu 부재
+- Runtime 상태 필드 부재
+- 구체 오브젝트 참조 저장 부재
+
+6. TestTagTraitSO 검수
+- 기존 테스트 호환을 위한 concrete class 유지
+- OnActivate만 최소 구현
+- 기본 true 반환
+- Recording 기능이나 상태를 불필요하게 추가하지 않음
+
+7. RecordingTagTraitSO 검수
+- Test Assembly에만 존재
+- 호출 횟수와 마지막 Context 기록 가능
+- ActivateResult 설정 가능
+- 콜백 Action 및 예외 설정 가능
+- CreateAssetMenu 없음
+- Runtime 공개 계약 오염 없음
+
+8. TagAdd 생명주기 검수
+- 단계 3 입력 검증 유지
+- 동일 ID 가드 획득 후 처리
+- Dictionary 등록 후 OnAdd 호출
+- OnAdd 후 OnTagAdded 발생
+- OnAdd 시 조회에서 태그가 존재
+- Keyword 정상 추가 시 OnAdd 없음, Added 이벤트는 있음
+- 실패 Add에서 OnAdd와 이벤트 없음
+- 동일 Definition 중복 임시 정책 유지
+- OnAdd 예외 후 상태 유지, Added 이벤트, true
+- OnAdd 예외 비전파
+
+9. TagSub 생명주기 검수
+- 단계 3 입력 검증 유지
+- 동일 ID 가드 획득 후 처리
+- OnRemove를 Dictionary 제거 전에 호출
+- OnRemove 시 조회에서 태그가 존재
+- OnRemove 후 제거
+- 제거 후 OnTagRemoved 발생
+- 실패 Sub에서 OnRemove와 이벤트 없음
+- OnRemove 예외 후 제거 계속, Removed 이벤트, true
+- OnRemove 예외 비전파
+
+10. 비정상 데이터 제거 검수
+- Keyword + Trait 기존 데이터 제거 허용
+- 해당 Trait.OnRemove 미호출
+- 별도 Trait 불일치 Error 로그 없음
+- 비Keyword + Trait Null 제거 허용
+- OnRemove 없음
+- 별도 Trait 불일치 Error 로그 없음
+- OnTagRemoved 발생
+- 빈 이름 기존 데이터 제거 정책 유지
+
+11. Trait 예외 안전성 검수
+- OnAdd 예외: Error, 상태 유지, Added 이벤트, true
+- OnRemove 예외: Error, 제거, Removed 이벤트, true
+- OnActivate 예외: Error, false, 상태 유지, 이벤트 없음
+- 예외 재전파 없음
+- 단계 12 교체 한글 주석
+- 로그 문구 영어
+- 예외 이후 가드 해제 및 후속 API 가능
+
+12. TagActivate 공개 API 검수
+- 정확한 시그니처:
+-- public bool TagActivate(TagDefinition definition, GameObject source = null)
+- 불필요 overload 부재
+- source 저장 부재
+
+13. TagActivate 입력 검증 검수
+- Null Definition: Error + false
+- TagID.None: Error + false
+- Null/빈 이름: Error + false
+- 정상 Keyword + Null Trait: 로그 없이 false
+- Keyword + Trait: Error + false, Trait 미호출
+- 비Keyword + Trait Null: Error + false
+- 미보유 정상 태그: 로그 없이 false
+- 같은 ID 다른 Definition: Error + false
+- 실패 시 상태 변경과 이벤트 없음
+
+14. TagActivate 정상 실행 검수
+- 보유 중인 정상 비Keyword만 실행
+- 실제 Instance.Definition 사용
+- Context.Container 정확
+- Context.Target == container.gameObject
+- Context.Source 전달값 보존
+- Context.Instance 실제 참조
+- OnActivate 반환값 그대로 반환
+- true 강제 없음
+- TagActivate 자체 변경 이벤트 없음
+
+15. Category 정책 검수
+- Keyword 여부는 Category만 기준
+- 정상 Keyword Trait 없음
+- Keyword Trait 실행 금지
+- Category.None + Trait은 일반 태그로 OnAdd/OnRemove/OnActivate 호출 가능
+- 비Keyword Trait Null 정상 추가 금지 유지
+
+16. 재진입 가드 검수
+- Trait 콜백과 뒤따르는 이벤트 종료까지 같은 ID 유지
+- try-finally 해제
+- OnAdd 같은 ID Add/Sub 차단
+- OnRemove 같은 ID Add/Sub 차단
+- OnActivate 같은 ID Add/Sub/Activate 차단
+- 상태 변경과 추가 이벤트 없음
+- 다른 ID Add/Sub/Activate 허용
+- 조회 API 허용
+- 교차 재진입 시 원래 ID 차단
+- 자기 TagSub 우회 기능 없음
+
+17. TraitContextTests 검수
+- 모든 참조 및 값 보존
+- Target 확인
+- Source Null 확인
+- Source 명시값 확인
+- internal 생성자 접근 확인
+
+18. 생명주기 테스트 검수
+- OnAdd 호출 한 번
+- OnAdd Context
+- OnAdd 시 저장 상태
+- OnAdd → Added 순서
+- Keyword OnAdd 미호출
+- 실패 Add OnAdd 미호출
+- OnAdd 동일 ID 재진입 차단
+- OnAdd 다른 ID 허용
+- OnAdd 예외 정책
+- OnRemove 호출 한 번
+- OnRemove Context
+- OnRemove 시 저장 상태
+- OnRemove → 제거 → Removed 순서
+- 비정상 Keyword OnRemove 미호출
+- 비Keyword Null Trait OnRemove 미호출
+- 실패 Sub OnRemove 미호출
+- OnRemove 동일 ID 재진입 차단
+- OnRemove 다른 ID 허용
+- OnRemove 예외 정책
+
+19. 활성화 테스트 검수
+- Trait true/false 반환 전달
+- Context와 Source
+- 미보유
+- Null/None/빈 이름
+- 정상 Keyword
+- 잘못된 Keyword
+- 비Keyword Null Trait
+- 같은 ID 다른 Definition
+- Trait 예외
+- 변경 이벤트 없음
+- 동일 ID 재진입 차단
+- 다른 ID 변경 및 활성화 허용
+- 조회 API 허용
+- 예외 후 가드 해제
+
+20. 기존 이벤트 및 CRUD 회귀
+- OnTagAdded 데이터와 횟수 유지
+- OnTagRemoved 데이터와 횟수 유지
+- Added 시점은 OnAdd 뒤
+- Removed 시점은 제거 뒤
+- OnTagUpdated 계속 미발생
+- 단계 3 중복 정책 유지
+- 조회 API 시그니처 불변
+- TryAddInstance 정책 불변
+- 단계 0~4 테스트 삭제·완화 없음
+
+21. 코드 스타일
+- var 금지
+- BSD 중괄호
+- private camelCase
+- XML 영어
+- 일반 주석 한글
+- 로그 영어
+- NRT 미도입
+- 불필요한 LINQ/#region/using 없음
+
+22. 범위 초과
+- 다음 조기 구현 금지:
+-- PerishableTagAdd
+-- 시간 정규화
+-- Tick/Update
+-- Refresh
+-- MaxDuration
+-- StackCount 처리
+-- 소멸 태그 영구 전환
+-- OnTagUpdated 발생
+-- 여러 Trait 연결
+-- Trait 우선순위
+-- async/Coroutine Trait
+-- 자기 소비 전용 API
+-- TagDiagnostics
+-- Editor Validator
+-- PlayMode 테스트
+-- Sample
+
+23. 결과 보고 검수
+- 생성·수정 파일 정확성
+- TraitContext, ITagTrait, TagTraitSO, TagActivate 보고
+- Add/Remove/Activate 순서 보고
+- 예외 정책 보고
+- 재진입 정책 보고
+- Keyword 및 비정상 데이터 제거 보고
+- 단계 7·10 인계 및 Updated 미발생 보고
+- 다음 또는 동일 의미 포함:
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+
+24. 사용자 수동 검증
+- Unity 컴파일
+- 단계 0~4 전체 회귀 테스트
+- TraitContextTests
+- TagContainerTraitLifecycleTests
+- TagContainerActivationTests
+- LogAssert
+- 생명주기 순서
+- Trait 예외 이후 후속 API
+- AI가 실제 확인했다고 주장하지 않는다.
+
+25. 문제 분류
+
+25.1. 차단 문제
+- TraitContext가 변경 가능
+- Target이 Source로 대체됨
+- TagTraitSO에 Runtime 상태 저장
+- OnAdd가 등록 전 호출
+- OnRemove가 제거 후 호출
+- Keyword Trait 실행
+- 비정상 Keyword 제거 중 OnRemove 호출
+- Trait 예외 재전파
+- OnAdd/OnRemove 예외로 API false
+- OnActivate 예외로 상태 변경
+- TagActivate 이벤트 발생
+- 동일 ID Trait 재진입 허용
+- 단계 3 중복 정책 무단 변경
+- 테스트 결과 허위 보고
+
+25.2. 수정 권장
+- XML/스타일 위반
+- 테스트 일부 누락
+- 로그 주석 누락
+- 불필요 helper 또는 테스트 상태
+- 완료 보고 일부 누락
+
+25.3. 사용자 확인 필요
+- Unity 컴파일
+- EditMode 테스트
+- LogAssert
+- 전체 회귀 테스트
+
+26. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 5 - Trait 계약, 생명주기와 TagActivate
+
+(차단 문제)
+- 없음 또는 경로, 문제, 영향
+
+(수정 권장 문제)
+- 없음 또는 경로, 문제, 수정안
+
+(범위 초과)
+- 없음 또는 파일과 기능
+
+(Trait 계약 검수)
+- TraitContext
+- ITagTrait
+- TagTraitSO
+- 테스트 Trait
+
+(TagAdd 생명주기 검수)
+- 호출 시점
+- Context
+- 이벤트 순서
+- 예외
+- 재진입
+
+(TagSub 생명주기 검수)
+- 호출 시점
+- Context
+- 제거 및 이벤트 순서
+- 비정상 데이터
+- 예외
+- 재진입
+
+(TagActivate 검수)
+- 시그니처
+- 입력 검증
+- Keyword
+- Context
+- 반환값
+- 예외
+- 이벤트 부재
+
+(테스트 검수)
+- TraitContext
+- 생명주기
+- 활성화
+- 예외/재진입
+- 객체 정리
+
+(기존 기능 회귀)
+- 이벤트
+- CRUD
+- 조회
+- 기존 테스트
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 결과
+- Test code written, not executed 또는 사용자 결과
+
+(사용자 확인 필요)
+- 남은 수동 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 5 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 근거

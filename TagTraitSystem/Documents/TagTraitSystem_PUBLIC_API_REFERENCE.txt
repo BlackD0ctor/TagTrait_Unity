@@ -1,0 +1,129 @@
+TagTraitSystem Public API Reference
+
+Version
+- 0.1.0
+- Status: Initial functional preview.
+
+Runtime Public Types
+- TagTraitSystem.Runtime.Core.TagID
+- TagTraitSystem.Runtime.Core.TagCategory
+- TagTraitSystem.Runtime.Core.StackPolicy
+- TagTraitSystem.Runtime.Core.TagChangeReason
+- TagTraitSystem.Runtime.Core.ExclusiveGroup
+- TagTraitSystem.Runtime.Definitions.TagDefinition
+- TagTraitSystem.Runtime.Core.TagInstance
+- TagTraitSystem.Runtime.Core.TraitContext
+- TagTraitSystem.Runtime.Traits.ITagTrait
+- TagTraitSystem.Runtime.Traits.TagTraitSO
+- TagTraitSystem.Runtime.Core.TagChangeEventData
+- TagTraitSystem.Runtime.Components.TagContainer
+- TagTraitSystem.Runtime.Diagnostics.TagDiagnostics
+
+Enum Values
+- TagID: None = 0, TestAlpha = 1, TestBeta = 2, TestGamma = 3, SampleKeyword = 100, SamplePermanent = 101, SampleRefresh = 102, SampleMaxDuration = 103, SampleStackCount = 104.
+- TagCategory: None = 0, Keyword = 1, Status = 2.
+- StackPolicy: None = 0, MaxDuration = 1, Refresh = 2, StackCount = 3.
+- TagChangeReason: Added = 0, Removed = 1, DurationRefreshed = 2, DurationExtendedToMax = 3, StackIncreased = 4, StackDecreased = 5, ChangedToPermanent = 6, Expired = 7.
+- ExclusiveGroup: None = 0.
+
+Serialized Data Contract
+- TagDefinition serialized field names: tagID, tagName, category, trait, stackPolicy, maxStackCount, exclusiveGroup, priority, isSaveable.
+- Default values: tagName = empty string, maxStackCount = 1, enum fields = 0, priority = 0, isSaveable = false, trait = null.
+- Renaming serialized fields requires FormerlySerializedAs or a migration plan.
+- Changing enum numeric values requires a serialized data migration plan.
+
+TagDefinition
+- Namespace: TagTraitSystem.Runtime.Definitions.
+- Declaration: public sealed class TagDefinition : ScriptableObject.
+- CreateAssetMenu: fileName = NewTagDefinition, menuName = TagTraitSystem/Tag Definition, order = 0.
+- Public getters: TagID, TagName, Category, Trait, StackPolicy, MaxStackCount, ExclusiveGroup, Priority, IsSaveable, IsKeywordTag.
+
+TagInstance
+- Namespace: TagTraitSystem.Runtime.Core.
+- Declaration: public sealed class TagInstance.
+- Public getters: Definition, Duration, RemainingTime, StackCount, IsPerishable.
+- Constructors and mutation methods are internal.
+
+TraitContext
+- Namespace: TagTraitSystem.Runtime.Core.
+- Declaration: public readonly struct TraitContext.
+- Public getters: Container, Target, Source, Definition, Instance.
+- Target is the GameObject that owns the TagContainer.
+- Source is the GameObject passed to the public API.
+
+ITagTrait
+- Namespace: TagTraitSystem.Runtime.Traits.
+- Declaration: public interface ITagTrait.
+- Methods: void OnAdd(TraitContext context), void OnRemove(TraitContext context), bool OnActivate(TraitContext context).
+
+TagTraitSO
+- Namespace: TagTraitSystem.Runtime.Traits.
+- Declaration: public abstract class TagTraitSO : ScriptableObject, ITagTrait.
+- Methods: virtual void OnAdd(TraitContext context), virtual void OnRemove(TraitContext context), abstract bool OnActivate(TraitContext context).
+
+TagChangeEventData
+- Namespace: TagTraitSystem.Runtime.Core.
+- Declaration: public readonly struct TagChangeEventData.
+- Public getters: Container, Definition, Instance, Source, Reason, PreviousDuration, PreviousRemainingTime, PreviousStackCount.
+- Previous values describe state before the public call or Tick changed it.
+
+TagContainer
+- Namespace: TagTraitSystem.Runtime.Components.
+- Declaration: public class TagContainer : MonoBehaviour.
+- Events: OnTagAdded, OnTagRemoved, OnTagUpdated.
+- bool TagAdd(TagDefinition definition, GameObject source = null).
+- bool PerishableTagAdd(TagDefinition definition, float duration, GameObject source = null).
+- bool TagSub(TagDefinition definition, GameObject source = null).
+- bool TagActivate(TagDefinition definition, GameObject source = null).
+- void Tick(float deltaTime).
+- IReadOnlyCollection<TagInstance> TagScan().
+- bool TagCheck(TagDefinition definition).
+- bool TagCheck(TagID tagID).
+- bool TagANDCheck(params TagDefinition[] definitions).
+- bool TagORCheck(params TagDefinition[] definitions).
+- bool TryGetTag(TagDefinition definition, out TagInstance instance).
+
+TagContainer Return Rules
+- Normal no-op false: duplicate non-stack permanent add, max stack reached, lower MaxDuration input, activation of a missing tag, removing a missing tag, invalid query arrays.
+- Error false with diagnostics: null definitions for mutation, TagID.None mutation, empty TagName for add/activate, invalid Keyword/Trait combination, missing Trait for non-keyword add/activate, same TagID with different definition, invalid duration, invalid StackCount state.
+- Warning false: reentrant mutation for the same TagID.
+- Nested Tick returns without throwing and logs a warning.
+
+Duration and Tick
+- PerishableTagAdd accepts positive finite duration only.
+- Duration is rounded to one decimal place using MidpointRounding.AwayFromZero.
+- Normalized duration is clamped to a minimum of 0.1.
+- TimeEpsilon is 0.0001.
+- Tick rejects negative, NaN, or infinite deltaTime with an error.
+- Tick(0) is a no-op.
+
+Trait and Event Order
+- New non-keyword add: OnAdd, then OnTagAdded.
+- Activation: OnActivate is called and its result is returned.
+- Remove or expire: OnRemove, then OnTagRemoved.
+- Refresh, MaxDuration, StackCount changes, and conversion: OnTagUpdated.
+- Keyword tags do not call traits.
+
+TagScan
+- TagScan returns an array-backed snapshot collection.
+- The snapshot composition does not update after later add/remove calls.
+- TagInstance objects inside the snapshot are shared references.
+
+Same ID Rules
+- Same TagID and same TagDefinition means the operation can proceed according to policy.
+- Same TagID and different TagDefinition is an error for mutation paths that detect it.
+- Queries operate by TagID.
+
+Diagnostics
+- Namespace: TagTraitSystem.Runtime.Diagnostics.
+- Declaration: public static class TagDiagnostics.
+- public static void Log(string message, UnityEngine.Object context = null).
+- public static void LogWarning(string message, UnityEngine.Object context = null).
+- public static void LogError(string message, UnityEngine.Object context = null).
+- Messages are prefixed with [TagTraitSystem].
+
+Sample Public Types
+- TagTraitSystem.Samples.TagTraitSampleController.
+- TagTraitSystem.Samples.SampleLogTraitSO.
+- TagTraitSampleController public context menu methods: AddPermanent, AddPerishable, Remove, Activate, TickOneSecond, PrintCurrentTags.
+- SampleLogTraitSO CreateAssetMenu: fileName = NewSampleLogTrait, menuName = TagTraitSystem/Samples/Logging Trait, order = 100.

@@ -1,0 +1,35 @@
+TagTraitSystem Known Limitations
+
+Version
+- 0.1.0
+- Status: Initial functional preview.
+
+StackCount Tick Model
+- StackCount Tick behavior is order-dependent when callbacks mutate other TagIDs during the same Tick.
+- Future deferred execution, replay, or large refactor work should separate time calculation from callbacks and consider a transaction-style state merge.
+- Perishable StackCount requires every stack to use the same normalized Duration.
+- Perishable StackCount increase and intermediate decrease reset RemainingTime to Duration.
+- Expiring a perishable StackCount tag applies StackCount = 1 before removal.
+- There is no object-level MaxStackCount override. The value comes from TagDefinition.MaxStackCount.
+
+Runtime Scope
+- TagContainer does not run Update by itself. A caller must invoke Tick(float).
+- TagScan returns a snapshot collection, but TagInstance references are shared with the container state.
+- TagScan allocates an array when tags exist. Tick also allocates a snapshot array.
+- Runtime thread safety is not guaranteed. Use from the Unity main thread.
+- No save/load layer is included.
+- ExclusiveGroup is serialized and exposed but has no runtime behavior in 0.1.0.
+- Priority is serialized and exposed but has no runtime behavior in 0.1.0.
+- IsSaveable is serialized and exposed but has no persistence behavior in 0.1.0.
+- No automatic TagID generator or ID database is included.
+
+Validation and Tests
+- PlayMode test assembly is not included.
+- Sample scenes and sample assets are created manually by the user.
+- Mobile builds are not verified by this implementation step.
+- Windows IL2CPP Development Build verification is a manual checklist item for the user.
+
+Preview Status
+- Do not treat these limitations as solved.
+- Do not reuse serialized enum numeric values without a migration plan.
+- API adjustments can occur before 1.0 if limitations require design changes.

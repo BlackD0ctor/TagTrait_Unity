@@ -1,0 +1,435 @@
+유니티 TagTrait 시스템 개발 단계 11-1 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 11-1
+- 원래 개발 단계: 11
+- 단계 제목: 소멸 태그 StackCount Add/Sub
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- 수정된 (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 수정된 개발 단계 1 구현 및 검수 프롬프트
+-- 개발 단계 0~10 완료 기록
+- 기준 충돌 우선순위:
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: 수정된 AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌 발견 시 임의로 API나 테스트를 변경하지 말고 문제, 영향 범위 및 권장안을 보고한다.
+
+1. 현재 단계 목표
+- 기존 소멸 StackPolicy.StackCount 태그에 PerishableTagAdd를 호출하면 한 스택 증가시킨다.
+- 스택 증가 성공 시 현재 활성 스택의 RemainingTime을 Duration으로 초기화한다.
+- 기존 소멸 StackPolicy.StackCount 태그에 TagSub를 호출하면 현재 활성 스택을 제거하고 다음 대기 스택을 활성화한다.
+- 중간 스택 감소 성공 시 RemainingTime을 Duration으로 초기화한다.
+- MaxStackCount를 적용한다.
+- 같은 TagInstance의 모든 스택이 동일 Duration을 사용하는 불변식을 유지한다.
+- Trait 생명주기, 이벤트, 재진입, Tick 중 변경 추적을 기존 구조와 연결한다.
+- 다중 스택 Tick 계산은 개발 단계 11-2에서 구현한다.
+
+2. 이전 단계 전제
+- TagDefinition.MaxStackCount가 존재한다.
+- TagInstance에는 MaxStackCount 복제 상태가 없다.
+- 단계 10의 영구 StackCount 증감이 존재한다.
+- 단계 8의 tickModifiedTagIDs가 존재한다.
+- 단계 9의 tickStartRemainingTimes가 존재한다.
+- 단계 6의 Tick은 현재 단일 소멸 스택을 처리한다.
+- 위 전제가 충족되지 않으면 중복 기능을 만들지 말고 누락 상태를 보고한다.
+
+3. 수정 및 생성 파일
+
+3.1. 필수 수정
+- (Assets/TagTraitSystem/Runtime/Core/TagInstance.cs)
+- (Assets/TagTraitSystem/Runtime/Components/TagContainer.cs)
+
+3.2. 생성
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerPerishableStackCountMutationTests.cs)
+
+3.3. 조건부 수정
+- 단계 6 이후 기존 테스트 중 소멸 StackCount 중복 PerishableTagAdd를 임시 실패로 기대하는 테스트
+- 단계 10 이후 기존 테스트 중 소멸 StackCount TagSub를 완전 제거로 기대하는 테스트
+- 기존 테스트를 삭제하지 않고 단계 11-1 정책으로 의도적으로 수정한다.
+
+3.4. 수정 금지
+- Assembly Definition
+- Package 파일
+- TagChangeReason enum 값
+- Refresh와 MaxDuration 정책
+- 다중 스택 Tick 산술 계산
+- Editor Validator와 TagDiagnostics 완성
+
+4. 소멸 StackCount 시간 모델
+- 하나의 TagInstance 안에서 모든 스택은 동일 Duration을 사용한다.
+- Duration은 각 스택 하나의 전체 지속시간이다.
+- RemainingTime은 현재 활성 스택의 남은 시간이다.
+- StackCount는 현재 활성 스택을 포함한 전체 잔여 스택 수이다.
+- 전체 잔여시간은 개념적으로 다음과 같다.
+-- RemainingTime + (StackCount - 1) * Duration
+- 스택별 duration 배열, List, Queue, Source 저장 구조를 추가하지 않는다.
+
+5. 서로 다른 duration 입력
+- PerishableTagAdd의 duration은 단계 6-1 규칙으로 검증·정규화한다.
+- 최대치 미만에서 기존 Duration과 정규화된 새 duration이 정확히 같아야 스택 증가를 허용한다.
+- 정규화된 Duration끼리는 정확 비교를 사용한다.
+- 다르면:
+-- Error 로그
+-- false 반환
+-- 상태 변화 없음
+-- Trait 호출 없음
+-- 이벤트 없음
+-- tickModifiedTagIDs 기록 없음
+- 최대치에 이미 도달했거나 초과한 경우에는 duration 일치 검사 전에 false를 반환한다.
+- 최대치 no-op에서는 duration 불일치 Error를 출력하지 않는다.
+
+6. 소멸 스택 증가 적용 조건
+- 같은 TagID의 기존 Instance가 존재한다.
+- 같은 TagDefinition 참조이다.
+- 기존 Instance.IsPerishable == true이다.
+- Definition.StackPolicy == StackPolicy.StackCount이다.
+- Definition.MaxStackCount >= 1이다.
+- 기존 Definition이 정상 데이터이다.
+- StackCount < MaxStackCount이다.
+- 정규화된 새 duration == 기존 Duration이다.
+
+7. 소멸 스택 증가 상태 변경
+- 호출당 정확히 한 스택만 증가시킨다.
+- 성공 시:
+-- StackCount += 1
+-- Duration 유지
+-- RemainingTime = Duration
+-- IsPerishable 유지
+-- Definition 유지
+-- 기존 TagInstance 참조 유지
+- 새 TagInstance를 만들지 않는다.
+- Dictionary 값을 교체하지 않는다.
+- 증가와 함께 현재 활성 스택 시간을 전체 Duration으로 초기화하는 것은 의도된 정책이다.
+
+8. 소멸 스택 증가 의미
+- 스택 증가 성공은 다음 두 효과를 함께 가진다.
+-- 새 대기 스택 하나 추가
+-- 현재 활성 스택의 RemainingTime을 Duration으로 초기화
+- 이에 따라 전체 잔여시간은 단순히 Duration만큼보다 더 많이 증가할 수 있다.
+- 이 동작은 Refresh 이벤트를 별도로 발생시키지 않는다.
+- 한 API 호출의 최종 결과는 StackIncreased 하나로 집계한다.
+
+9. 최대 스택 처리
+- StackCount >= Definition.MaxStackCount이면:
+-- false
+-- StackCount 변화 없음
+-- RemainingTime 변화 없음
+-- Trait 호출 없음
+-- 이벤트 없음
+-- 로그 없음
+-- tickModifiedTagIDs 기록 없음
+- 최대치 도달 상태에서 시간을 초기화하지 않는다.
+- StackCount > MaxStackCount인 비정상 기존 상태도 자동 축소하지 않는다.
+- MaxStackCount < 1은 Error와 false이다.
+
+10. TagInstance 내부 API
+- 소멸 스택 증가용 internal 메서드를 추가하거나 기존 스택 증가 메서드를 안전하게 확장한다.
+- 권장 형태:
+-- internal bool TryIncreasePerishableStackCount()
+- 성공 시 StackCount 1 증가와 RemainingTime = Duration을 함께 수행한다.
+- MaxStackCount 검사와 IsPerishable 검사 결과에 따라 false를 반환할 수 있다.
+- 로그, 이벤트, Trait, Dictionary, 재진입은 처리하지 않는다.
+- 기존 영구 스택 증가 메서드가 있다면 영구와 소멸의 시간 초기화 차이를 명확히 분리한다.
+- 하나의 모호한 메서드에서 호출자 인자로 동작을 숨기지 않는다.
+
+11. 소멸 StackIncreased 이벤트
+- 성공한 PerishableTagAdd에서 OnTagUpdated를 한 번 발생시킨다.
+- Reason = TagChangeReason.StackIncreased
+- Source = PerishableTagAdd의 source
+- PreviousDuration = 증가 직전 Duration
+- PreviousRemainingTime = 초기화 직전 RemainingTime
+- PreviousStackCount = 증가 직전 StackCount
+- 이벤트 콜백에서는 증가 후 StackCount와 RemainingTime == Duration이 보여야 한다.
+- OnTagAdded와 OnTagRemoved는 발생시키지 않는다.
+
+12. 소멸 스택 증가 Trait 계약
+- 중복 스택 증가에서 OnAdd를 다시 호출하지 않는다.
+- OnRemove와 OnActivate도 호출하지 않는다.
+- 최초 소멸 태그 추가는 기존 단계 6의 등록→OnAdd→Added 경로를 유지한다.
+
+13. 소멸 StackCount TagSub
+- 정상 소멸 StackCount 태그의 StackCount > 1이면 현재 활성 스택을 제거한다.
+- 성공 시:
+-- StackCount -= 1
+-- RemainingTime = Duration
+-- Duration 유지
+-- IsPerishable 유지
+-- 기존 Instance 유지
+-- true
+-- OnTagUpdated 한 번
+-- Reason = StackDecreased
+- 의미:
+-- 현재 활성 스택의 남은 시간을 폐기
+-- 다음 대기 스택을 활성화
+-- 다음 스택은 전체 Duration으로 시작
+- 대기 중 마지막 스택만 제거하는 정책이 아니다.
+
+14. 마지막 소멸 스택 TagSub
+- StackCount == 1이면 기존 완전 제거 경로를 사용한다.
+- RemainingTime을 Duration으로 초기화하지 않는다.
+- StackCount를 0으로 만들지 않는다.
+- 정상 실행형 태그:
+-- OnRemove
+-- Dictionary 제거
+-- OnTagRemoved
+-- Reason = Removed
+- OnTagUpdated와 StackDecreased는 발생시키지 않는다.
+
+15. 소멸 StackDecreased 이벤트
+- StackCount > 1에서 중간 감소 성공 시 OnTagUpdated를 한 번 발생시킨다.
+- Reason = TagChangeReason.StackDecreased
+- Source = TagSub의 source
+- PreviousDuration = 감소 직전 Duration
+- PreviousRemainingTime = 현재 활성 스택 제거 전 RemainingTime
+- PreviousStackCount = 감소 직전 StackCount
+- 콜백 시 Instance.StackCount는 1 감소했고 RemainingTime == Duration이어야 한다.
+- OnTagRemoved와 OnTagAdded는 발생시키지 않는다.
+
+16. 소멸 스택 감소 Trait 계약
+- 중간 스택 감소에서는 OnRemove를 호출하지 않는다.
+- OnAdd와 OnActivate도 호출하지 않는다.
+- 마지막 한 스택 완전 제거에서만 기존 OnRemove 계약을 사용한다.
+
+17. 비정상 데이터 복구
+- 단계 10 정책을 소멸 StackCount에도 유지한다.
+- 다음 비정상 기존 데이터는 StackCount와 관계없이 TagSub 한 번으로 완전 제거한다.
+-- 빈 TagName
+-- Keyword + Trait
+-- 비Keyword + Trait null
+-- MaxStackCount < 1
+-- 기존 복구 대상 데이터
+- 처리:
+-- OnRemove 생략
+-- Dictionary 완전 제거
+-- OnTagRemoved 한 번
+-- Reason = Removed
+-- OnTagUpdated 없음
+-- StackDecreased 없음
+- 제거 전 StackCount나 RemainingTime을 보정하지 않는다.
+
+18. Tick 중 소멸 스택 증가·감소
+- Tick 처리 중 다른 TagID의 콜백에서 소멸 StackCount 증감은 허용한다.
+- 성공한 증감은 RemainingTime을 Duration으로 초기화하므로 해당 ID를 tickModifiedTagIDs에 기록한다.
+- 해당 태그의 현재 Tick 처리 차례가 아직 남아 있으면 현재 Tick 처리를 건너뛴다.
+- 다음 독립 Tick부터 감소한다.
+- 해당 태그가 이미 현재 Tick에서 처리된 뒤라면 기존 Tick 결과를 되돌리지 않고 현재 결과에 증감을 적용한다.
+- 성공한 증감 직후 최종 RemainingTime은 Duration이다.
+- 최대치 no-op, duration 불일치 실패, invalid maximum 실패에서는 tickModifiedTagIDs를 기록하지 않는다.
+
+19. Tick 처리 순서 제한사항
+- 대상 태그가 Tick 처리되기 전에 스택이 변하면 현재 Tick을 건너뛴다.
+- 대상 태그가 이미 Tick 처리된 뒤 스택이 변하면 이미 소진된 스택은 복구하지 않는다.
+- 따라서 Tick 콜백에서 다른 태그의 StackCount를 변경하면 Dictionary 스냅샷 처리 순서에 따라 최종 StackCount가 달라질 수 있다.
+- 현재 단계에서는 기존 즉시 변경 API와 Tick 스냅샷 구조를 유지하기 위해 이 차이를 허용한다.
+- Dictionary 순회 순서는 공개 계약으로 보장하지 않는다.
+
+20. 향후 필수 재설계 항목
+- 다음 기술 부채를 완료 보고와 문서에 명시한다.
+-- StackCount Tick 처리 구조 재설계 필요
+- 보류 기능 구현 또는 시스템 리팩터링을 시작하기 전에 반드시 별도 설계를 수행한다.
+- 검토할 후보:
+-- Tick 중 변경 요청 지연 큐
+-- 모든 시간 계산 완료 후 Trait·이벤트 콜백 실행
+-- Tick 시작 상태와 API 변경을 병합하는 트랜잭션 구조
+- 현재 단계에서는 위 구조를 조기 구현하지 않는다.
+
+21. 재진입
+- 스택 증가·감소 시작부터 Updated 이벤트 종료까지 processingTagIDs를 유지한다.
+- Updated 콜백에서 같은 ID의 TagAdd, TagSub, PerishableTagAdd, TagActivate는 false이다.
+- 다른 ID 변경과 조회는 허용한다.
+- 자기 자신의 Tick 만료 처리 중 같은 ID 변경은 기존 재진입 가드로 차단한다.
+- 예외나 실패 이후 finally에서 가드를 해제한다.
+
+22. 정책별 PerishableTagAdd
+- None: 기존 태그가 있으면 false
+- Refresh: 단계 8 정책
+- MaxDuration: 단계 9 정책
+- StackCount:
+-- 최대치 미만
+-- 동일 Duration
+-- 한 스택 증가
+-- RemainingTime = Duration
+- 각 정책을 혼합하지 않는다.
+
+23. 기존 테스트 변경
+- 기존 소멸 StackCount 중복 PerishableTagAdd 실패 테스트를 단계 11-1 정책으로 수정한다.
+- 증가 성공 테스트에서는 MaxStackCount를 2 이상으로 설정한다.
+- 서로 다른 duration 실패 테스트를 추가한다.
+- 기존 소멸 StackCount TagSub 전체 제거 임시 테스트는:
+-- StackCount > 1이면 중간 감소
+-- StackCount == 1이면 완전 제거
+로 분리한다.
+- 테스트를 삭제하거나 범용적으로 완화하지 않는다.
+
+24. 필수 테스트 - 시간 모델과 duration
+- PerishableStackCount_WhenCreated_UsesSequentialSharedDurationModel
+- PerishableTagAdd_WhenNormalizedDurationMatches_IncreasesStack
+- PerishableTagAdd_WhenNormalizedDurationDiffers_ReturnsFalseAndLogsError
+- PerishableTagAdd_WhenRawValuesNormalizeEqual_AllowsStack
+- PerishableTagAdd_WhenAtMaximum_SkipsDurationMismatchValidation
+- PerishableTagAdd_WhenDurationMismatch_FailsWithoutStateTraitOrEvents
+
+25. 필수 테스트 - 스택 증가
+- PerishableTagAdd_WhenStackCountTagExists_IncreasesOneStack
+- PerishableTagAdd_WhenStackIncreases_ResetsRemainingTimeToDuration
+- PerishableTagAdd_WhenStackIncreases_KeepsDuration
+- PerishableTagAdd_WhenStackIncreases_KeepsSameInstance
+- PerishableTagAdd_WhenStackIncreases_DoesNotInvokeTraitLifecycle
+- PerishableTagAdd_WhenStackIncreases_InvokesUpdatedOnce
+- PerishableTagAdd_WhenStackIncreases_UsesStackIncreasedReason
+- PerishableTagAdd_WhenStackIncreases_PreservesPreviousValues
+- PerishableTagAdd_WhenStackIncreases_PreservesSource
+- PerishableTagAdd_WhenCallbackQueries_SeesResetTimeAndIncreasedStack
+
+26. 필수 테스트 - 최대치
+- PerishableTagAdd_WhenAtMaximum_ReturnsFalse
+- PerishableTagAdd_WhenAtMaximum_DoesNotResetRemainingTime
+- PerishableTagAdd_WhenAtMaximum_DoesNotInvokeTraitEventsOrLogs
+- PerishableTagAdd_WhenAboveMaximum_DoesNotClamp
+- PerishableTagAdd_WhenMaximumIsOne_DuplicateReturnsFalse
+- PerishableTagAdd_WhenMaximumIsBelowOne_ReturnsFalseAndLogsError
+
+27. 필수 테스트 - TagSub 중간 감소
+- TagSub_WhenPerishableStackCountIsThree_DecreasesToTwo
+- TagSub_WhenPerishableStackCountIsTwo_DecreasesToOne
+- TagSub_WhenPerishableStackDecreases_ResetsRemainingTimeToDuration
+- TagSub_WhenPerishableStackDecreases_KeepsSameInstance
+- TagSub_WhenPerishableStackDecreases_DoesNotInvokeTraitLifecycle
+- TagSub_WhenPerishableStackDecreases_InvokesUpdatedOnce
+- TagSub_WhenPerishableStackDecreases_UsesStackDecreasedReason
+- TagSub_WhenPerishableStackDecreases_PreservesPreviousValues
+- TagSub_WhenPerishableStackDecreases_PreservesSource
+- TagSub_WhenCallbackQueries_SeesResetTimeAndDecreasedStack
+
+28. 필수 테스트 - 마지막 제거와 비정상 복구
+- TagSub_WhenPerishableStackCountIsOne_RemovesEntireTag
+- TagSub_WhenLastPerishableStackRemoved_DoesNotResetTime
+- TagSub_WhenLastPerishableStackRemoved_DoesNotSetStackCountZero
+- TagSub_WhenLastPerishableStackRemoved_UsesRemovedReason
+- TagSub_WhenMalformedPerishableStackDataExists_RemovesAllStacks
+- MalformedPerishableStackRemoval_DoesNotInvokeOnRemove
+- MalformedPerishableStackRemoval_DoesNotInvokeStackDecreased
+
+29. 필수 테스트 - Tick 중 변경 추적
+- Tick_WhenLaterPerishableStackTagIsIncreased_SkipsItsCurrentTick
+- Tick_WhenLaterPerishableStackTagIsDecreased_SkipsItsCurrentTick
+- Tick_WhenStackMutationOccursAfterTargetProcessed_DoesNotRestoreConsumedStacks
+- Tick_WhenStackMutationSucceeds_EndsWithRemainingTimeEqualDuration
+- Tick_WhenStackMutationFails_DoesNotMarkTickModified
+- Tick_WhenMaximumNoOpOccurs_DoesNotSkipTargetTick
+- Tick_WhenDurationMismatchOccurs_DoesNotSkipTargetTick
+- Tick_WhenProcessingOrderDiffers_MayProduceDifferentStackCountButRemainsValid
+- 마지막 테스트는 순서 차이를 공개 보장으로 고정하지 않고 현재 제한사항을 문서화하는 수준으로 작성한다.
+
+30. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- NRT 미도입
+- 불필요한 LINQ 및 할당 금지
+
+31. 현재 단계 비범위
+- 다중 스택 Tick 산술 계산
+- 큰 deltaTime 다중 소진
+- 초과시간 다음 스택 전달
+- 스택별 duration 저장
+- 스택별 Source 저장
+- Tick 변경 요청 지연 큐
+- Tick 트랜잭션
+- 콜백 단계 분리
+- 오브젝트별 MaxStackCount
+- Runtime 최대치 override
+- 일반 Tick 감소 Updated
+- Editor Validator
+- TagDiagnostics 완성
+- Sample
+
+32. 금지 사항
+- 서로 다른 duration을 하나의 Instance에 저장하지 않는다.
+- 새 duration으로 기존 모든 스택의 Duration을 변경하지 않는다.
+- 최대치 도달에서 RemainingTime을 초기화하지 않는다.
+- 증가·감소 성공에서 RemainingTime 유지를 적용하지 않는다.
+- 증가·감소 성공에서 DurationRefreshed 이벤트를 추가로 발생시키지 않는다.
+- 중간 감소에서 OnRemove를 호출하지 않는다.
+- 비정상 데이터를 한 스택씩 감소시키지 않는다.
+- 처리 순서 문제를 숨기거나 순서 독립성을 보장한다고 보고하지 않는다.
+- 단계 11-2 기능을 조기 구현하지 않는다.
+- 실행하지 않은 테스트를 성공으로 보고하지 않는다.
+
+33. 작업 절차
+- 단계 10 완료 상태 확인
+- 기존 소멸 StackCount 임시 분기 확인
+- TagInstance 소멸 증감 메서드 추가
+- PerishableTagAdd StackCount 분기 구현
+- duration 일치와 최대치 검사 순서 구현
+- 성공 시 RemainingTime 초기화
+- TagSub 소멸 StackCount 중간 감소 구현
+- 성공 시 RemainingTime 초기화
+- tickModifiedTagIDs 연동
+- 이벤트와 재진입 연결
+- 기존 테스트 수정
+- 신규 테스트 작성
+- 단계 0~10 회귀 정적 검토
+- 기술 부채 문구 기록
+- Unity 검증 미실행 상태 보고
+
+34. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 11-1 - 소멸 태그 StackCount Add/Sub
+
+(생성한 파일)
+- 경로와 역할
+
+(수정한 파일)
+- 경로와 이유
+
+(시간 모델)
+- 동일 Duration 순차 스택
+- RemainingTime 의미
+- 전체 잔여시간 의미
+
+(스택 증가)
+- 동일 duration
+- MaxStackCount
+- RemainingTime 초기화
+- 이벤트와 Trait
+
+(스택 감소)
+- 현재 활성 스택 제거
+- RemainingTime 초기화
+- 마지막 제거
+
+(Tick 연동)
+- tickModifiedTagIDs
+- 처리 전/후 차이
+- 순서 의존성 허용
+
+(향후 필수 재설계)
+- StackCount Tick 처리 구조 재설계 필요
+- 검토 후보 목록
+- 현재 단계에서 미구현
+
+(수정한 기존 테스트)
+- 변경 전후와 이유
+
+(작성한 테스트)
+- 파일과 메서드 목록
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 11-2 진행 가능

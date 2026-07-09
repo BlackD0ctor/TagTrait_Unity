@@ -1,0 +1,501 @@
+유니티 TagTrait 시스템 개발 단계 4 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 4
+- 단계 제목: 태그 변경 이벤트와 동일 TagID 재진입 방지
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0~3 완료 기록
+- 기준 충돌 우선순위:
+-- 현재 단계 프롬프트
+-- AI 개발 공통 규칙
+-- 원본 개발 설계서
+-- 이전 단계 완료 기록
+-- 현재 코드와 테스트
+-- 일반 Unity/C# 관례
+- 충돌이 발견되면 임의로 해결하지 말고 문제, 영향 범위 및 권장안을 먼저 보고한다.
+
+1. AI 역할
+- Unity 6 환경에서 TagContainer의 태그 변경 이벤트와 재진입 안전성을 구현한다.
+- 현재 단계에서는 이벤트 데이터, Added/Removed/Updated 이벤트 선언, 안전한 이벤트 호출, 동일 TagID 재진입 방지를 구현한다.
+- Trait 생명주기, TagActivate, 소멸 태그, 시간 처리 및 StackPolicy 실제 동작은 구현하지 않는다.
+- Unity 컴파일과 Test Runner 실행은 사용자가 수행한다.
+
+2. 개발 환경
+- Unity 6.0 LTS (6000.0.68f1)
+- .NET Standard 2.1
+- Unity Test Framework 1.6.0
+- Runtime Assembly: TagTraitSystem.Runtime
+- EditMode Test Assembly: TagTraitSystem.Tests.EditMode
+- Windows PC 우선
+- IL2CPP 호환성 고려
+
+3. 이전 단계 전제
+- TagContainer의 조회 API와 영구 TagAdd/TagSub가 사용자의 Unity 검증을 통과한 것으로 전제한다.
+- 단계 3의 임시 중복 정책을 유지한다.
+-- 동일 Definition 중복 TagAdd는 false
+-- 이벤트 없음
+-- StackCount 처리는 단계 10
+-- 소멸 태그 영구 전환은 단계 7
+- 전제가 충족되지 않으면 구현을 시작하지 말고 누락 내용을 보고한다.
+
+4. 현재 단계 목표
+- TagChangeEventData를 읽기 전용 값 형식으로 구현한다.
+- TagContainer에 OnTagAdded, OnTagRemoved, OnTagUpdated 공개 이벤트를 추가한다.
+- 성공한 TagAdd와 TagSub에 이벤트를 연결한다.
+- 각 구독자를 개별 예외 격리하는 SafeInvoke를 구현한다.
+- 동일 TagID 상태 변경 재진입을 HashSet으로 차단한다.
+- 이벤트 콜백에서 조회 API와 다른 TagID 변경은 허용한다.
+- 이벤트 및 재진입 EditMode 테스트를 작성한다.
+
+5. 생성 및 수정 파일
+
+5.1. 생성
+- Assets/TagTraitSystem/Runtime/Core/TagChangeEventData.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerEventTests.cs
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerReentrancyTests.cs
+
+5.2. 수정
+- Assets/TagTraitSystem/Runtime/Components/TagContainer.cs
+
+5.3. 유지
+- 기존 TagContainerTests.cs는 조회 및 기본 CRUD 테스트 파일로 유지한다.
+- 기존 테스트를 새 파일로 임의 이동하거나 삭제하지 않는다.
+- 중복 helper가 생기더라도 현재 단계에서 공용 Test Factory를 조기 도입하지 않는다.
+
+6. TagChangeEventData
+
+6.1. 선언
+- 네임스페이스:
+-- TagTraitSystem.Runtime.Core
+- 다음 형태로 구현한다.
+-- public readonly struct TagChangeEventData
+
+6.2. 프로퍼티
+- 다음 public getter-only 프로퍼티를 구현한다.
+-- public TagContainer Container { get; }
+-- public TagDefinition Definition { get; }
+-- public TagInstance Instance { get; }
+-- public GameObject Source { get; }
+-- public TagChangeReason Reason { get; }
+-- public float PreviousDuration { get; }
+-- public float PreviousRemainingTime { get; }
+-- public int PreviousStackCount { get; }
+
+6.3. 생성자
+- internal 생성자로 구현한다.
+- 모든 프로퍼티 값을 생성자 매개변수로 받는다.
+- 외부 public 생성자를 추가하지 않는다.
+- 생성자 내부에서 별도 검증, 로그 또는 상태 변경을 수행하지 않는다.
+
+6.4. 의미
+- Container는 이벤트를 발생시킨 TagContainer이다.
+- Definition은 변경 대상 TagDefinition이다.
+- Instance는 변경 후 또는 제거된 실제 TagInstance 참조이다.
+- Source는 공개 API에 전달된 GameObject 값을 그대로 보존한다.
+- Reason은 TagChangeReason이다.
+- Previous 값은 공개 API 호출 직전 상태를 의미한다.
+
+6.5. 문서화
+- public 타입과 public 프로퍼티에 영어 XML 문서 주석을 작성한다.
+- readonly struct가 외부 변경 방지를 위한 이벤트 스냅샷임을 설명한다.
+- Instance 참조 자체는 변경 가능한 Runtime 객체임을 숨기지 않는다.
+
+7. TagContainer 공개 이벤트
+
+7.1. 선언
+- 다음 이벤트를 정확히 선언한다.
+-- public event Action<TagChangeEventData> OnTagAdded;
+-- public event Action<TagChangeEventData> OnTagRemoved;
+-- public event Action<TagChangeEventData> OnTagUpdated;
+
+7.2. 현재 단계 발생 정책
+- 성공한 TagAdd: OnTagAdded 한 번
+- 성공한 TagSub: OnTagRemoved 한 번
+- OnTagUpdated: 선언만 하고 현재 단계에서는 발생시키지 않음
+- 실패한 API 호출: 모든 변경 이벤트 없음
+
+7.3. 공개 계약
+- 이벤트 구독 순서를 별도 공개 계약으로 보장하지 않는다.
+- 비동기 처리나 이벤트 큐를 추가하지 않는다.
+- 이벤트를 UnityEvent로 바꾸지 않는다.
+
+8. Added 이벤트 데이터
+
+8.1. 발생 시점
+- Dictionary 추가가 완료된 뒤 발생한다.
+- 콜백에서 TagCheck와 TryGetTag를 호출하면 추가된 태그가 보여야 한다.
+
+8.2. 값
+- Container = 현재 TagContainer
+- Definition = 추가 요청 Definition
+- Instance = Dictionary에 추가된 실제 TagInstance
+- Source = TagAdd의 source
+- Reason = TagChangeReason.Added
+- PreviousDuration = 0f
+- PreviousRemainingTime = 0f
+- PreviousStackCount = 0
+
+8.3. 이벤트 수
+- 하나의 성공한 TagAdd 호출에서 최대 한 번 발생한다.
+- OnTagRemoved와 OnTagUpdated는 발생하지 않는다.
+
+9. Removed 이벤트 데이터
+
+9.1. 발생 시점
+- 제거 대상 Instance와 Previous 값을 보관한다.
+- Dictionary에서 제거를 완료한 뒤 발생한다.
+- 콜백에서 조회하면 이미 제거된 상태여야 한다.
+
+9.2. 값
+- Container = 현재 TagContainer
+- Definition = 제거된 Instance의 Definition
+- Instance = 제거된 실제 TagInstance 참조
+- Source = TagSub의 source
+- Reason = TagChangeReason.Removed
+- PreviousDuration = 제거 직전 Duration
+- PreviousRemainingTime = 제거 직전 RemainingTime
+- PreviousStackCount = 제거 직전 StackCount
+
+9.3. 이벤트 수
+- 하나의 성공한 TagSub 호출에서 최대 한 번 발생한다.
+- OnTagAdded와 OnTagUpdated는 발생하지 않는다.
+
+10. SafeInvoke
+
+10.1. 권장 시그니처
+- private void SafeInvoke(Action<TagChangeEventData> eventHandler, TagChangeEventData eventData)
+
+10.2. 처리
+- eventHandler가 Null이면 반환한다.
+- GetInvocationList로 구독자 스냅샷을 얻는다.
+- 각 구독자를 개별 try-catch로 호출한다.
+- 한 구독자가 예외를 던져도 다음 구독자를 계속 호출한다.
+- 예외는 호출자에게 다시 던지지 않는다.
+- 상태 변경을 롤백하지 않는다.
+- API는 원래 성공 결과인 true를 반환한다.
+- Error 로그를 남긴다.
+- 로그 문구는 영어로 작성한다.
+- 직접 Debug.LogError 인접 위치에 다음 의미의 한글 주석을 작성한다.
+-- 개발 단계 12에서 TagDiagnostics로 교체한다.
+
+10.3. 금지
+- 멀티캐스트 delegate 전체를 한 번의 try-catch로 호출하지 않는다.
+- 예외를 무시하고 로그도 남기지 않는 빈 catch를 사용하지 않는다.
+- 구독자 예외 때문에 TagAdd 또는 TagSub를 false로 바꾸지 않는다.
+
+11. 재진입 가드
+
+11.1. 필드
+- TagContainer에 다음 의미의 필드를 추가한다.
+-- private readonly HashSet<TagID> processingTagIDs = new HashSet<TagID>();
+
+11.2. 적용 API
+- TagAdd
+- TagSub
+- 이후 다음 상태 변경 API도 동일 가드를 사용해야 함을 한글 주석 또는 완료 보고에 남긴다.
+-- PerishableTagAdd
+-- TagActivate
+-- 시간 및 스택 상태 변경 내부 처리
+
+11.3. 보호 범위
+- 상태 변경 시작부터 이벤트 호출이 끝날 때까지 유지한다.
+- 이벤트 호출 전에 가드를 해제하지 않는다.
+- try-finally를 사용한다.
+- finally에서 processingTagIDs.Remove(tagID)를 수행한다.
+
+11.4. 획득 시점
+- 기본 Definition 입력 검증이 끝난 뒤 획득한다.
+- TagAdd:
+-- Null/None/이름/Category-Trait 검증
+-- 가드 획득
+-- 중복 및 Definition 불일치 확인
+-- 추가
+-- 이벤트
+-- 가드 해제
+- TagSub:
+-- Null/None 검증
+-- 가드 획득
+-- 보유 여부 및 Definition 불일치 확인
+-- 제거
+-- 이벤트
+-- 가드 해제
+
+11.5. 동일 ID 재진입
+- processingTagIDs.Add가 false이면 즉시 false를 반환한다.
+- 상태 변경 없음
+- 이벤트 없음
+- 예외 없음
+- 현재 단계에서는 로그 없음
+
+11.6. 다른 ID
+- 다른 TagID 변경은 허용한다.
+- 각 ID는 독립적으로 가드에 등록한다.
+
+11.7. 교차 재진입
+- Alpha 처리 중 Beta 변경은 허용한다.
+- Beta 이벤트에서 다시 Alpha를 변경하면 Alpha가 아직 처리 중이므로 차단한다.
+
+11.8. 조회 API
+- TagScan, TagCheck, TagANDCheck, TagORCheck, TryGetTag는 가드 대상이 아니다.
+- 이벤트 콜백 안에서 정상 호출할 수 있어야 한다.
+
+12. TagAdd 변경
+- 단계 3의 입력 검증과 TryAddInstance 재사용을 유지한다.
+- 유효성 검사 후 같은 TagID 가드를 획득한다.
+- 가드 내부에서 Instance 생성, TryAddInstance, Added 이벤트를 처리한다.
+- TryAddInstance가 false이면 이벤트를 발생시키지 않고 false를 반환한다.
+- 성공 추가 후 Added 이벤트 데이터를 생성하고 SafeInvoke한다.
+- SafeInvoke 구독자 예외가 있어도 true를 반환한다.
+- finally에서 가드를 해제한다.
+- 단계 3 중복 임시 정책을 유지한다.
+
+13. TagSub 변경
+- 단계 3의 입력 검증과 Definition 참조 불일치 정책을 유지한다.
+- 입력 검증 후 같은 TagID 가드를 획득한다.
+- 없는 태그, Definition 불일치 등의 실패에도 finally로 가드를 해제한다.
+- 제거 전 Previous 값을 지역 변수에 보관한다.
+- Dictionary 제거 후 Removed 이벤트를 발생시킨다.
+- SafeInvoke 구독자 예외가 있어도 true를 반환한다.
+- 단계 5에서 Trait.OnRemove가 추가될 때 호출 순서가 확장될 수 있음을 완료 보고에 남긴다.
+
+14. 이벤트가 없어야 하는 경우
+- Null Definition
+- TagID.None
+- 빈 이름 TagAdd
+- Keyword + Trait
+- 비Keyword + Trait Null
+- 동일 Definition 중복 TagAdd
+- 없는 태그 TagSub
+- 같은 ID 다른 Definition
+- 동일 ID 재진입
+- TryAddInstance 실패
+- 위 모든 경우 Added/Removed/Updated 없음
+
+15. OnTagUpdated
+- public 이벤트로 선언한다.
+- 현재 단계에서는 어떤 경로에서도 발생시키지 않는다.
+- 다음 이후 단계에서 사용한다.
+-- 단계 7: 소멸 태그 영구 전환
+-- 단계 8: Refresh
+-- 단계 9: MaxDuration
+-- 단계 10~11: StackCount
+-- Tick에서 일부 스택이 남는 경우
+- 현재 단계 테스트에서 Add/Sub 시 Updated가 발생하지 않음을 확인한다.
+
+16. 이벤트 테스트 파일
+
+16.1. 파일
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerEventTests.cs
+
+16.2. 테스트 기본 구조
+- GameObject와 TagContainer 생성
+- TagDefinition과 필요 시 TestTagTraitSO 생성
+- SerializedObject로 Definition 필드 설정
+- TearDown에서 DestroyImmediate
+- 구독한 delegate는 테스트 객체 제거 전에 필요 시 해제
+- 프로젝트 에셋 생성 없음
+
+16.3. Added 필수 테스트
+- OnTagAdded_WhenTagAddSucceeds_InvokesOnce
+- OnTagAdded_WhenInvoked_ContainsExpectedData
+- OnTagAdded_WhenSourceIsNull_PreservesNullSource
+- OnTagAdded_WhenSourceIsSpecified_PreservesSource
+- OnTagAdded_WhenCallbackQueriesContainer_SeesAddedState
+- TagAdd_WhenFails_DoesNotInvokeAnyChangeEvent
+- TagAdd_WhenSucceeds_DoesNotInvokeRemovedOrUpdated
+
+16.4. Removed 필수 테스트
+- OnTagRemoved_WhenTagSubSucceeds_InvokesOnce
+- OnTagRemoved_WhenInvoked_ContainsExpectedData
+- OnTagRemoved_WhenCallbackQueriesContainer_SeesRemovedState
+- OnTagRemoved_WhenSourceIsNull_PreservesNullSource
+- OnTagRemoved_WhenSourceIsSpecified_PreservesSource
+- TagSub_WhenFails_DoesNotInvokeAnyChangeEvent
+- TagSub_WhenSucceeds_DoesNotInvokeAddedOrUpdated
+
+16.5. 데이터 검증
+- Container 동일 참조
+- Definition 동일 참조
+- Instance 실제 참조
+- Source 동일 참조 또는 Null
+- Reason
+- Added Previous 값 0/0/0
+- Removed Previous 값 제거 직전 상태
+
+16.6. 예외 격리 필수 테스트
+- SafeInvoke_WhenFirstSubscriberThrows_InvokesLaterSubscribers
+- TagAdd_WhenSubscriberThrows_KeepsStateAndReturnsTrue
+- TagSub_WhenSubscriberThrows_KeepsStateAndReturnsTrue
+- SafeInvoke_WhenSubscriberThrows_LogsErrorWithoutRethrow
+- EventException_WhenHandled_DoesNotLeaveReentrancyGuardLocked
+- LogAssert로 Error 로그를 검증한다.
+- 전체 로그 문구에 과도하게 결합하지 않는다.
+
+17. 재진입 테스트 파일
+
+17.1. 파일
+- Assets/TagTraitSystem/Tests/EditMode/TagContainerReentrancyTests.cs
+
+17.2. 필수 테스트
+- OnTagAdded_WhenSameIDTagAddIsRequested_ReturnsFalse
+- OnTagAdded_WhenSameIDTagSubIsRequested_ReturnsFalse
+- OnTagRemoved_WhenSameIDTagAddIsRequested_ReturnsFalse
+- SameIDReentrancy_WhenBlocked_DoesNotInvokeAdditionalEvents
+- OnTagAdded_WhenDifferentIDTagAddIsRequested_Succeeds
+- DifferentIDReentrancy_WhenAllowed_InvokesExpectedEvents
+- CrossReentrancy_WhenOriginalIDIsRequestedAgain_BlocksOriginalID
+- EventCallback_WhenQueryAPIsAreCalled_ReturnsFinalState
+- FailedDuplicateAdd_WhenCompleted_DoesNotLeaveGuardLocked
+- FailedMissingSub_WhenCompleted_DoesNotLeaveGuardLocked
+
+17.3. 기대 상태
+- Added 콜백에서 같은 ID TagSub가 차단되면 최초 태그는 유지된다.
+- Removed 콜백에서 같은 ID TagAdd가 차단되면 태그는 제거 상태를 유지한다.
+- 다른 ID 추가는 성공한다.
+- 이벤트 수는 각 성공 변경당 최대 한 번이다.
+
+18. 기존 테스트 수정
+- TagContainerTests.cs의 단계 3 테스트는 삭제하지 않는다.
+- 이벤트가 추가되더라도 기존 반환값과 상태 기대는 유지한다.
+- 단계 3의 임시 중복 테스트는 유지한다.
+- 기존 테스트가 이벤트 미구독 상태에서 계속 통과하도록 구현한다.
+
+19. 코딩 규칙
+- private 필드: 접두어 없는 camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- 필요한 기능 단위에만 #region
+- Nullable Reference Type 도입 금지
+- 불필요한 LINQ 금지
+
+20. 현재 단계 비범위
+- ITagTrait
+- TraitContext
+- TagTraitSO 생명주기
+- OnAdd/OnRemove/OnActivate
+- TagActivate
+- 소멸 태그
+- 시간 정규화
+- Tick/Update
+- StackPolicy 실제 처리
+- OnTagUpdated 실제 발생
+- 이벤트 큐
+- 비동기 이벤트
+- thread lock
+- 재진입 경고 로그
+- TagDiagnostics
+- Editor Validator
+- PlayMode 테스트
+- Sample
+
+21. 금지 사항
+- 이벤트를 상태 변경 전에 발생시키지 않는다.
+- Removed 이벤트를 Dictionary 제거 전에 발생시키지 않는다.
+- 이벤트 호출 전에 재진입 가드를 해제하지 않는다.
+- 모든 구독자를 한 번의 try-catch로 묶지 않는다.
+- 구독자 예외를 재던지지 않는다.
+- 구독자 예외로 API를 false 처리하지 않는다.
+- 같은 ID 재진입을 허용하지 않는다.
+- 다른 ID 재진입을 전부 막는 단일 bool 가드를 사용하지 않는다.
+- 조회 API를 차단하지 않는다.
+- OnTagUpdated를 조기 발생시키지 않는다.
+- 단계 3 중복 정책을 변경하지 않는다.
+- 미실행 테스트 또는 미확인 컴파일을 성공으로 보고하지 않는다.
+
+22. 작업 절차
+- 단계 3 완료 상태 확인
+- TagChangeEventData 생성
+- TagContainer 이벤트 선언
+- processingTagIDs 필드 추가
+- SafeInvoke 구현
+- TagAdd에 가드와 Added 이벤트 연결
+- TagSub에 가드와 Removed 이벤트 연결
+- EventTests 작성
+- ReentrancyTests 작성
+- 기존 테스트 정적 회귀 검토
+- 범위 초과 확인
+- Unity 검증 미실행 명시
+- 사용자 검증 절차 보고
+
+23. 작업 중단 조건
+- 기존 TagContainer 구조상 try-finally 가드 적용에 파괴적 변경이 필요한 경우
+- 이벤트 데이터를 추가하려면 기존 공개 API를 변경해야 하는 경우
+- Test Assembly에서 internal 이벤트 데이터 생성자 접근이 불가능한 경우
+- 현재 단계 밖 Trait 또는 시간 코드를 먼저 구현해야 하는 경우
+- 기존 테스트와 확정 이벤트 순서가 충돌하는 경우
+- 위 경우 문제, 선택지, 권장안 및 영향 범위를 보고한다.
+
+24. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 4 - 태그 변경 이벤트와 동일 TagID 재진입 방지
+
+(생성한 파일)
+- 경로 목록
+
+(수정한 파일)
+- 경로와 이유
+
+(구현한 공개 API)
+- OnTagAdded
+- OnTagRemoved
+- OnTagUpdated
+- TagChangeEventData 공개 프로퍼티
+
+(구현한 내부 로직)
+- SafeInvoke
+- processingTagIDs
+- Added/Removed 이벤트 시점
+- 예외 격리
+- 재진입 차단
+
+(이벤트 데이터)
+- Added 값
+- Removed 값
+- Source 및 Container 보존
+
+(작성한 테스트)
+- 이벤트 테스트 목록
+- 재진입 테스트 목록
+
+(기존 임시 정책 인계)
+- 단계 7 소멸 태그 영구 전환
+- 단계 10 영구 StackCount 중복 추가
+- 현재 단계에서 Updated 미발생
+
+(정적 검토)
+- 이벤트 최대 한 번
+- 최종 상태 조회
+- 가드 finally 해제
+- 기존 테스트 보존
+- 범위 초과 여부
+
+(Unity 사용자 확인 필요)
+- Unity 컴파일
+- 단계 0~3 회귀 테스트
+- 이벤트 테스트
+- 재진입 테스트
+- LogAssert
+- 구독자 예외 이후 후속 API
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(설계 변경)
+- 없음 또는 상세
+
+(남은 문제)
+- 없음 또는 상세
+
+(다음 단계)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 5 진행 가능

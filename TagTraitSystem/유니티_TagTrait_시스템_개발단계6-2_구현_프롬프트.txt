@@ -1,0 +1,229 @@
+유니티 TagTrait 시스템 개발 단계 6-2 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 6-2
+- 단계 제목: Tick과 소멸 태그 만료
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- 원본 개발 설계서
+-- AI 개발 공통 규칙
+-- 개발 단계 0~5 완료 기록
+-- 개발 단계 6-1 완료 기록
+- 단계 6-1이 사용자 Unity 검증을 통과하지 않았으면 시작하지 않는다.
+- 충돌이 발견되면 임의로 해결하지 말고 문제, 영향 범위 및 권장안을 보고한다.
+
+1. 목표
+- public void Tick(float deltaTime)을 구현한다.
+- 소멸 태그의 RemainingTime만 연속적으로 감소시킨다.
+- RemainingTime은 초기 저장 이후 매 Tick마다 정규화하거나 반올림하지 않는다.
+- epsilon으로 만료를 판정한다.
+- 만료 시 OnRemove, Dictionary 제거, OnTagRemoved를 수행한다.
+- Tick 시작 시 Instance 스냅샷을 사용해 콜백 중 컬렉션 변경에 안전하게 대응한다.
+- isTicking으로 중첩 Tick을 차단한다.
+- TagSub와 만료 제거의 공통 private 제거 파이프라인을 도입한다.
+
+2. 수정·생성 파일
+- 수정:
+-- Assets/TagTraitSystem/Runtime/Core/TagInstance.cs
+-- Assets/TagTraitSystem/Runtime/Components/TagContainer.cs
+- 생성:
+-- Assets/TagTraitSystem/Tests/EditMode/TagContainerTickTests.cs
+
+3. 공개 API
+- 정확한 시그니처: public void Tick(float deltaTime)
+- Update, FixedUpdate, Coroutine을 추가하지 않는다.
+- TagContainer는 외부 호출로만 시간을 소비한다.
+
+4. 시간 정책
+- 초기 Duration과 RemainingTime은 단계 6-1에서 정규화된 동일 값이다.
+- Tick의 deltaTime은 정규화하지 않는다.
+- 감소 후 RemainingTime도 정규화하거나 첫째 자리로 반올림하지 않는다.
+- RemainingTime은 일반 float 값으로 연속적으로 감소한다.
+- 권장 상수: private const float TimeEpsilon = 0.0001f;
+- 만료 확정 시 RemainingTime을 정확히 0f로 맞춘다.
+- Duration은 Tick에서 변경하지 않는다.
+
+5. TagInstance 내부 API
+- internal void DecreaseRemainingTime(float deltaTime)를 추가한다.
+- RemainingTime에서 deltaTime을 뺀다.
+- 결과가 0보다 작으면 0f로 제한한다.
+- Duration은 변경하지 않는다.
+- 이벤트나 Trait을 호출하지 않는다.
+- 입력 검증은 TagContainer.Tick이 담당한다.
+- 현재 StackCount 1 기준이며 단계 11에서 리팩터링될 수 있음을 완료 보고에 남긴다.
+
+6. Tick 입력
+- 유한한 deltaTime > 0f: 정상 처리
+- deltaTime == 0f: 로그 없는 no-op
+- 음수, NaN, 양·음 Infinity:
+-- Error 로그
+-- 전체 Tick 취소
+-- 모든 태그 상태 변화 없음
+- 잘못된 입력은 메서드 시작 시 검증한다.
+- 로그는 영어로 작성한다.
+- 직접 Debug.LogError 인접 위치에 단계 12 TagDiagnostics 교체 한글 주석을 둔다.
+
+7. 중첩 Tick 방지
+- private bool isTicking 필드를 추가한다.
+- 이미 true이면 중첩 Tick은 즉시 반환한다.
+- 로그와 상태 변화가 없어야 한다.
+- 일반 Add/Sub/Activate를 막는 전역 가드로 사용하지 않는다.
+- 구현 구조:
+-- isTicking 검사
+-- isTicking = true
+-- try에서 전체 Tick 처리
+-- finally에서 isTicking = false
+- try-finally는 Runtime 구현 요구사항이다.
+- 테스트는 중첩 Tick 차단과 후속 독립 Tick 정상 작동을 검증한다.
+
+8. Tick 스냅샷
+- Tick 시작 시 현재 TagInstance 참조 배열을 생성한다.
+- Dictionary를 직접 foreach하지 않는다.
+- 각 Instance 처리 전 다음을 다시 확인한다.
+-- 같은 TagID가 아직 존재하는가
+-- 현재 Dictionary Instance가 스냅샷 Instance와 같은 참조인가
+-- 여전히 IsPerishable인가
+- Tick 중 새로 추가된 태그는 다음 Tick부터 처리한다.
+- 먼저 제거된 태그는 건너뛴다.
+- 같은 ID에 다른 Instance가 생기면 이전 객체는 처리하지 않는다.
+- 처리 순서는 공개 계약으로 보장하지 않는다.
+
+9. 개별 태그 처리
+- 영구 태그는 건너뛴다.
+- 해당 ID의 processingTagIDs 가드를 획득한다.
+- 획득 실패 시 해당 태그를 건너뛴다.
+- Tick 호출 직전 Previous 값을 보관한다.
+- RemainingTime을 deltaTime만큼 감소한다.
+- 감소 후 RemainingTime > TimeEpsilon이면 유지한다.
+- 유지되는 경우 Trait과 모든 변경 이벤트는 없다.
+- 감소 후 RemainingTime <= TimeEpsilon이면 RemainingTime을 0f로 확정하고 만료 제거 파이프라인을 호출한다.
+- finally에서 해당 ID 가드를 해제한다.
+
+10. 만료 제거 순서와 이벤트
+- RemainingTime = 0f 확정
+- 정상 비Keyword Trait이면 OnRemove
+- Dictionary 제거
+- OnTagRemoved
+- 가드 해제
+- OnRemove 시 태그는 아직 Container에 존재한다.
+- OnTagRemoved 시 태그는 제거된 상태이다.
+- Source = null
+- Reason = TagChangeReason.Expired
+- PreviousDuration = Tick 호출 직전 Duration
+- PreviousRemainingTime = Tick 호출 직전 RemainingTime
+- PreviousStackCount = Tick 호출 직전 StackCount
+- Instance는 제거된 실제 객체이며 최종 RemainingTime은 0f이다.
+
+11. Trait 예외와 비정상 데이터
+- OnRemove 예외: Error 로그, 비전파, 제거 계속, Removed 이벤트 계속
+- 정상 Keyword: OnRemove 없음, 제거와 이벤트 수행
+- Keyword + Trait 비정상 데이터: OnRemove 없음, 제거와 이벤트 수행
+- 비Keyword + Trait Null: OnRemove 없음, 제거와 이벤트 수행
+
+12. 제거 파이프라인 공통화
+- TagSub와 Tick 만료가 공통 private helper를 사용하도록 리팩터링한다.
+- 권장 의미:
+-- RemoveInstanceInternal(instance, source, reason, previousDuration, previousRemainingTime, previousStackCount)
+- 정확한 이름은 구현 중 고정하되 private로 유지한다.
+- helper 책임:
+-- 유효한 Trait의 OnRemove
+-- Dictionary 제거
+-- OnTagRemoved
+- 재진입 가드 획득·해제는 호출자가 담당한다.
+- TagSub는 Reason.Removed와 전달 source를 유지한다.
+- Tick은 Reason.Expired와 null source를 사용한다.
+- 기존 TagSub 복구 경로, 예외 정책, 이벤트 순서를 보존한다.
+
+13. 일반 시간 감소 이벤트
+- 시간이 남는 단순 감소에는 Added/Removed/Updated 이벤트가 없다.
+- OnTagUpdated를 발생시키지 않는다.
+- 기존 TagScan 얕은 스냅샷은 같은 Instance 참조의 변경된 RemainingTime을 관찰할 수 있다.
+
+14. 재진입
+- Tick 내부 각 ID는 processingTagIDs로 보호한다.
+- OnRemove/Removed 이벤트에서 같은 ID 변경은 차단된다.
+- 다른 ID Add/Sub/Activate는 허용한다.
+- 중첩 Tick은 isTicking으로 차단한다.
+- 조회 API는 허용한다.
+
+15. 필수 테스트 - 시간 감소
+- 소멸 태그 RemainingTime 감소
+- Duration 불변
+- 영구 태그 무변화
+- 시간이 남으면 Trait과 이벤트 없음
+- 기존 TagScan 스냅샷에서 같은 Instance 상태 변화 관찰
+- fractional deltaTime을 반복 적용해 RemainingTime을 매 호출 반올림하지 않음을 확인
+
+16. 필수 테스트 - 입력
+- deltaTime 0은 로그 없는 no-op
+- 음수, NaN, 양·음 Infinity는 Error와 전체 no-op
+
+17. 필수 테스트 - 만료
+- 정확한 시간에서 만료
+- RemainingTime보다 큰 Tick에서 만료
+- epsilon 범위에서 만료
+- 최종 RemainingTime 0
+- OnRemove -> 제거 -> OnTagRemoved 순서
+- Reason.Expired와 Source null
+- Previous 값이 Tick 시작 전 상태
+- Keyword는 Trait 없이 만료
+- OnRemove 예외 후 제거와 이벤트 지속
+- 만료 후 조회 실패
+
+18. 필수 테스트 - 컬렉션 변경
+- Tick 콜백에서 추가된 태그는 다음 Tick부터 감소
+- Tick 콜백에서 다른 태그가 제거되면 해당 스냅샷 항목을 건너뜀
+- 스냅샷 Instance와 현재 Instance가 다르면 이전 객체 미처리
+- 복수 만료 태그 테스트는 순서에 의존하지 않음
+
+19. 필수 테스트 - 중첩 Tick과 가드
+- 중첩 Tick 요청 시 다른 태그가 이중 감소하지 않음
+- 첫 Tick 종료 후 다음 독립 Tick 정상 작동
+- 처리된 예외 이후 isTicking 해제
+- 콜백에서 다른 ID 변경 허용
+- 같은 ID 변경 차단
+- 콜백에서 조회 API 사용 가능
+
+20. 기존 기능 회귀
+- TagSub의 OnRemove -> 제거 -> Removed 순서를 보존한다.
+- TagSub source와 Reason.Removed를 보존한다.
+- 단계 6-1 테스트를 변경하지 않는다.
+- 기존 TagAdd/TagSub, 이벤트, Trait, 재진입 테스트를 삭제하거나 완화하지 않는다.
+
+21. 현재 단계 비범위
+- Update 자동 Tick
+- Refresh, MaxDuration, StackCount
+- 큰 Tick의 여러 스택 소모와 초과 시간 전달
+- 영구·소멸 전환
+- 일반 감소 OnTagUpdated
+- 저장/로드
+- 시간 배율/일시정지 필드
+- Editor Validator, TagDiagnostics
+
+22. 금지 사항
+- deltaTime을 매 Tick 정규화하지 않는다.
+- RemainingTime을 매 Tick 반올림하지 않는다.
+- Dictionary 직접 foreach 중 콜백을 호출하지 않는다.
+- Tick 중 추가된 태그를 같은 Tick에서 감소시키지 않는다.
+- 중첩 Tick을 허용하지 않는다.
+- isTicking을 try-finally 없이 관리하지 않는다.
+- 일반 시간 감소에 Updated 이벤트를 발생시키지 않는다.
+- StackCount 미래 로직을 조기 구현하지 않는다.
+- 미실행 테스트나 미확인 컴파일 성공을 보고하지 않는다.
+
+23. 완료 보고
+- 수정·생성 파일
+- Tick API
+- RemainingTime 연속 감소와 비정규화 정책
+- TimeEpsilon
+- isTicking과 try-finally
+- 스냅샷 순회
+- 만료 순서와 이벤트 데이터
+- 제거 helper 공통화
+- TagInstance 내부 메서드와 단계 11 리팩터링 예정
+- 작성한 테스트
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 6 전체 완료 및 단계 7 진행 가능

@@ -1,0 +1,210 @@
+유니티 TagTrait 시스템 개발 단계 0 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 0
+- 단계 제목: 프로젝트 준비와 정책 고정
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0 구현 프롬프트
+-- 개발 단계 0 구현 결과 보고
+- 본 프롬프트에서는 새로운 기능을 구현하지 않는다.
+- 검수 중 수정이 필요하면 즉시 수정하기보다 문제와 수정 범위를 먼저 보고한다.
+
+1. 검수 목적
+- 개발 단계 0의 변경 사항이 프로젝트 준비 범위에만 머물렀는지 확인한다.
+- Runtime Assembly와 EditMode Test Assembly의 설정을 확인한다.
+- 기준 문서 배치와 최소 폴더 구조를 확인한다.
+- 환경 확인용 테스트 코드가 요구사항과 일치하는지 확인한다.
+- 단계 1 이후 기능이 조기 구현되지 않았는지 확인한다.
+- Unity에서 실제로 확인하지 않은 결과를 성공으로 보고하지 않았는지 확인한다.
+
+2. 검수 대상
+- (Assets/TagTraitSystem) 이하의 폴더 구조
+- (Assets/TagTraitSystem/Runtime/TagTraitSystem.Runtime.asmdef)
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystemEnvironmentTests.cs)
+- (Assets/TagTraitSystem/Documents) 이하의 기준 문서
+- 개발 단계 0 작업 결과 보고
+- 단계 0에서 생성 또는 수정된 모든 파일
+
+3. 폴더 구조 검수
+- 다음 폴더가 존재하는지 확인한다.
+-- (Assets/TagTraitSystem/Runtime)
+-- (Assets/TagTraitSystem/Tests/EditMode)
+-- (Assets/TagTraitSystem/Documents)
+- 다음 폴더가 불필요하게 조기 생성되지 않았는지 확인한다.
+-- (Assets/TagTraitSystem/Editor)
+-- (Assets/TagTraitSystem/Tests/PlayMode)
+-- (Assets/TagTraitSystem/Samples)
+-- Runtime 하위의 Core, Definitions, Traits, Components, Diagnostics
+- 조기 생성된 빈 폴더가 있으면 차단 문제는 아니지만 범위 초과로 기록한다.
+- 조기 생성된 폴더 안에 단계 1 이후 코드가 있으면 차단 문제로 기록한다.
+
+4. 기준 문서 검수
+- 다음 기준 문서가 목표 경로에 존재하는지 확인한다.
+-- (유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+- 문서의 중복 사본이 존재하는지 확인한다.
+- 기준 문서 내용이 단계 0 작업 중 임의로 수정되지 않았는지 확인한다.
+- 파일이 누락되어 있으면 사용자가 배치해야 할 경로를 보고한다.
+- 문서 배치 문제만으로 Runtime 코드를 임의 변경하지 않는다.
+
+5. Runtime Assembly Definition 검수
+- 파일 경로가 정확한지 확인한다.
+-- (Assets/TagTraitSystem/Runtime/TagTraitSystem.Runtime.asmdef)
+- Assembly 이름이 (TagTraitSystem.Runtime)인지 확인한다.
+- Root Namespace가 (TagTraitSystem.Runtime)인지 확인한다.
+- Editor 전용으로 제한되지 않았는지 확인한다.
+- Test Assembly 설정이 적용되지 않았는지 확인한다.
+- Unsafe Code가 비활성인지 확인한다.
+- 불필요한 Assembly 참조가 없는지 확인한다.
+- Define Constraints, Version Defines 및 플랫폼 제한이 불필요하게 추가되지 않았는지 확인한다.
+- Runtime Assembly가 Test 또는 Editor Assembly를 참조하지 않는지 확인한다.
+
+6. EditMode Test Assembly Definition 검수
+- 파일 경로가 정확한지 확인한다.
+-- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+- Assembly 이름이 (TagTraitSystem.Tests.EditMode)인지 확인한다.
+- Root Namespace가 (TagTraitSystem.Tests.EditMode)인지 확인한다.
+- (TagTraitSystem.Runtime) Assembly를 참조하는지 확인한다.
+- Test Assembly로 설정되어 있는지 확인한다.
+- Editor 플랫폼에서만 포함되도록 설정되어 있는지 확인한다.
+- Unsafe Code가 비활성인지 확인한다.
+- 불필요한 프로젝트 Assembly 참조가 없는지 확인한다.
+- Runtime Assembly와의 참조 방향이 역전되지 않았는지 확인한다.
+
+7. 환경 확인 테스트 검수
+- 파일 경로가 정확한지 확인한다.
+-- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystemEnvironmentTests.cs)
+- 네임스페이스가 (TagTraitSystem.Tests.EditMode)인지 확인한다.
+- 클래스명이 (TagTraitSystemEnvironmentTests)인지 확인한다.
+- 테스트 메서드명이 (EnvironmentSetup_WhenTestRuns_Passes)인지 확인한다.
+- NUnit의 ([Test])를 사용하는지 확인한다.
+- 테스트 본문이 (Assert.Pass())를 사용하는 최소 환경 테스트인지 확인한다.
+- UnityTest, Setup, TearDown 또는 TagTrait 실제 로직이 불필요하게 추가되지 않았는지 확인한다.
+- (var)를 사용하지 않았는지 확인한다.
+- BSD 중괄호 스타일을 따르는지 확인한다.
+- 불필요한 (#region)이나 Nullable 설정이 추가되지 않았는지 확인한다.
+
+8. 범위 초과 검수
+- 다음 타입 또는 기능이 단계 0에서 생성되지 않았는지 확인한다.
+-- TagID
+-- TagCategory
+-- StackPolicy
+-- TagChangeReason
+-- ExclusiveGroup
+-- TagDefinition
+-- TagInstance
+-- TagTraitSO
+-- ITagTrait
+-- TraitContext
+-- TagContainer
+-- TagDiagnostics
+-- Editor Validator
+-- Sample 코드
+- 실제 태그 조회, 추가, 제거, 실행, 시간 처리 또는 이벤트 코드가 없는지 확인한다.
+- README, Sample Scene, ScriptableObject 에셋 또는 프로젝트 전역 설정을 불필요하게 추가하지 않았는지 확인한다.
+- Packages/manifest.json 또는 Packages/packages-lock.json을 수정하지 않았는지 확인한다.
+- 관련 없는 기존 코드를 리팩터링하지 않았는지 확인한다.
+
+9. .meta 파일 검수
+- AI가 임의 GUID의 (.meta) 파일을 수동 생성하지 않았는지 확인한다.
+- 기존 (.meta) 파일을 수정하거나 삭제하지 않았는지 확인한다.
+- 문서 또는 파일 이동 중 기존 (.meta) 파일이 유실되지 않았는지 확인한다.
+- Unity가 생성한 정상적인 (.meta) 파일은 문제로 판단하지 않는다.
+
+10. 결과 보고 검수
+- 구현 결과 보고에 생성 및 수정 파일이 정확히 기재되었는지 확인한다.
+- Unity 컴파일을 실제로 확인하지 않았다면 성공으로 보고하지 않았는지 확인한다.
+- 테스트를 실제 실행하지 않았다면 통과했다고 보고하지 않았는지 확인한다.
+- 다음 문구 또는 동일 의미의 상태가 포함되어 있는지 확인한다.
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+- 사용자가 수행해야 할 Unity 검증 절차가 명시되어 있는지 확인한다.
+- 설계 변경 또는 충돌이 누락되지 않았는지 확인한다.
+
+11. 사용자 수동 검증 항목
+- Unity Editor에서 프로젝트를 열고 컴파일 오류가 없는지 확인
+- Assembly Definition 참조 오류가 없는지 확인
+- Unity Test Runner의 EditMode에서 다음 테스트가 검색되는지 확인
+-- (EnvironmentSetup_WhenTestRuns_Passes)
+- 해당 테스트를 실행하여 통과하는지 확인
+- Unity Test Framework 버전이 1.6.0으로 유지되는지 확인
+- Unity가 필요한 (.meta) 파일을 정상 생성했는지 확인
+- 이 항목은 AI가 실제 확인했다고 주장하지 않는다.
+
+12. 문제 분류 기준
+
+12.1. 차단 문제
+- Assembly 이름 또는 참조 방향 오류
+- Test Assembly 설정 누락
+- Runtime Assembly가 Test 또는 Editor Assembly를 참조함
+- 단계 1 이후 Runtime 코드가 조기 구현됨
+- Package 파일 또는 ProjectSettings가 무단 변경됨
+- 기존 기준 문서가 임의 변경됨
+- 테스트 실행 결과를 허위로 성공 보고함
+
+12.2. 수정 권장 문제
+- Root Namespace 오타
+- 테스트 파일 또는 메서드 이름 불일치
+- 불필요한 빈 폴더 조기 생성
+- 불필요한 Assembly 옵션 또는 참조 추가
+- 코드 스타일 위반
+- 완료 보고의 일부 항목 누락
+
+12.3. 사용자 확인 필요
+- 기준 문서 파일 누락
+- Unity 컴파일 결과
+- EditMode 테스트 실행 결과
+- Unity가 생성하는 (.meta) 파일
+- 현재 프로젝트의 기존 Assembly 구조와의 충돌
+
+13. 검수 출력 형식
+- 다음 형식으로만 검수 결과를 정리한다.
+
+(검수 대상 단계)
+- 개발 단계 0 - 프로젝트 준비와 정책 고정
+
+(차단 문제)
+- 없음 또는 파일 경로, 문제 내용, 영향 범위
+
+(수정 권장 문제)
+- 없음 또는 파일 경로, 문제 내용, 권장 수정
+
+(범위 초과)
+- 없음 또는 조기 구현된 파일과 기능
+
+(Assembly Definition 검수)
+- Runtime Assembly 판정
+- EditMode Test Assembly 판정
+- 참조 방향 판정
+
+(환경 테스트 검수)
+- 파일 및 네임스페이스 판정
+- 테스트 클래스 및 메서드 판정
+- 테스트 내용 판정
+
+(기준 문서 및 폴더 검수)
+- 문서 배치 상태
+- 폴더 구조 상태
+- 중복 문서 여부
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(사용자 확인 필요)
+- 남은 수동 확인 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 0 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 판단 근거

@@ -1,0 +1,354 @@
+유니티 TagTrait 시스템 개발 단계 2 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 2
+- 단계 제목: TagContainer와 조회 API
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0 완료 기록
+-- 개발 단계 1 완료 기록
+-- 개발 단계 2 구현 프롬프트
+-- 개발 단계 2 구현 결과 보고
+- 본 프롬프트에서는 새로운 기능을 구현하지 않는다.
+- 검수 중 수정이 필요하면 즉시 수정하기보다 문제, 심각도, 수정 범위 및 영향부터 보고한다.
+
+1. 검수 목적
+- 개발 단계 2가 TagContainer 기본 구조와 조회 API 범위에만 머물렀는지 확인한다.
+- Dictionary 캡슐화와 내부 삽입 경로를 확인한다.
+- TagScan이 얕은 스냅샷인지 확인한다.
+- 조회 API가 TagID 기준으로 동작하는지 확인한다.
+- AND/OR이 전체 입력을 선검증하는지 확인한다.
+- 단계 3 이후 기능이 조기 구현되지 않았는지 확인한다.
+- Unity에서 실제 확인하지 않은 결과를 성공으로 보고하지 않았는지 확인한다.
+
+2. 검수 대상
+- (Assets/TagTraitSystem/Runtime/Components/TagContainer.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerTests.cs)
+- 단계 2에서 생성 또는 수정된 모든 파일
+- 단계 2 구현 결과 보고
+- 단계 0 및 단계 1 기존 파일의 무단 변경 여부
+
+3. 파일 및 네임스페이스 검수
+- TagContainer 파일 경로가 정확한지 확인한다.
+- 네임스페이스가 (TagTraitSystem.Runtime.Components)인지 확인한다.
+- 테스트 네임스페이스가 (TagTraitSystem.Tests.EditMode)인지 확인한다.
+- 동일 타입이 다른 경로나 네임스페이스에 중복 생성되지 않았는지 확인한다.
+- Components 이외의 불필요한 Runtime 폴더가 조기 생성되지 않았는지 확인한다.
+
+4. TagContainer 클래스 검수
+- public class TagContainer : MonoBehaviour 형태인지 확인한다.
+- sealed가 아닌지 확인한다.
+- Awake, OnEnable, Start, Update가 없는지 확인한다.
+- 영어 XML 문서 주석이 현재 책임만 설명하는지 확인한다.
+- 태그 로직 외의 다른 컴포넌트 책임이 추가되지 않았는지 확인한다.
+
+5. Dictionary 검수
+- 필드가 다음 의미와 일치하는지 확인한다.
+-- private readonly Dictionary<TagID, TagInstance>
+-- 필드 선언 시 초기화
+- SerializeField가 없는지 확인한다.
+- Dictionary가 public, protected 또는 internal로 노출되지 않았는지 확인한다.
+- Count 프로퍼티가 조기 추가되지 않았는지 확인한다.
+- TagID.None을 Key로 넣는 경로가 차단되어 있는지 확인한다.
+- 제거 API가 없는지 확인한다.
+
+6. TryAddInstance 검수
+
+6.1. 시그니처
+- (internal bool TryAddInstance(TagInstance instance))인지 확인한다.
+- public 또는 테스트 전용 이름이 아닌지 확인한다.
+
+6.2. 입력 검증
+- Null Instance에서 false인지 확인한다.
+- Null Definition을 방어적으로 false 처리하는지 확인한다.
+- TagID.None에서 false인지 확인한다.
+- 상태 변경 없이 반환하는지 확인한다.
+
+6.3. 정상 추가
+- 기존 ID가 없으면 Dictionary에 추가하고 true인지 확인한다.
+- Trait, 이벤트, StackPolicy 또는 시간 로직을 호출하지 않는지 확인한다.
+
+6.4. 중복
+- 같은 ID와 같은 Definition 참조이면 false, 로그 없음인지 확인한다.
+- 같은 ID와 다른 Definition 참조이면 Error 로그 후 false인지 확인한다.
+- 기존 Instance가 유지되는지 확인한다.
+- 단계 12에서 TagDiagnostics로 교체한다는 한글 주석이 있는지 확인한다.
+- 로그 문구가 영어인지 확인한다.
+
+7. TagScan 검수
+- 시그니처가 (public IReadOnlyCollection<TagInstance> TagScan())인지 확인한다.
+- 빈 상태에서 Null이 아닌 빈 컬렉션인지 확인한다.
+- Dictionary Values 실시간 뷰를 직접 반환하지 않는지 확인한다.
+- 새 배열로 구성 스냅샷을 만드는지 확인한다.
+- TagInstance를 깊은 복사하지 않는지 확인한다.
+- 반환 순서에 의미를 부여하지 않는지 확인한다.
+- LINQ ToArray를 불필요하게 사용하지 않았는지 확인한다.
+- XML 문서 주석에 얕은 스냅샷과 순서 미보장이 설명되어 있는지 확인한다.
+
+8. TagCheck 검수
+
+8.1. Definition overload
+- 시그니처가 정확한지 확인한다.
+- Null이면 false인지 확인한다.
+- None ID이면 false인지 확인한다.
+- ID가 있으면 true인지 확인한다.
+- Definition 참조 동일성을 요구하지 않는지 확인한다.
+- 로그와 상태 변경이 없는지 확인한다.
+
+8.2. ID overload
+- 시그니처가 정확한지 확인한다.
+- None이면 false인지 확인한다.
+- Dictionary Key 존재 여부만 반환하는지 확인한다.
+- 로그와 상태 변경이 없는지 확인한다.
+
+9. TagANDCheck 검수
+- 시그니처가 정확한지 확인한다.
+- Null 배열과 빈 배열은 로그 없이 false인지 확인한다.
+- 내부 Null과 None ID는 Error 로그 후 false인지 확인한다.
+- 전체 배열을 먼저 검증한 뒤 보유 여부를 검사하는지 확인한다.
+- 단일 입력이 TagCheck와 같은 결과인지 확인한다.
+- 모든 ID가 있어야 true인지 확인한다.
+- 중복 입력을 허용하고 결과에 영향이 없는지 확인한다.
+- 불필요한 HashSet 할당이 없는지 확인한다.
+- 단계 12 교체 주석과 영어 로그 문구를 확인한다.
+
+10. TagORCheck 검수
+- 시그니처가 정확한지 확인한다.
+- Null 배열과 빈 배열은 로그 없이 false인지 확인한다.
+- 내부 Null과 None ID는 Error 로그 후 false인지 확인한다.
+- 전체 배열을 먼저 검증하는지 확인한다.
+- 보유 태그가 앞에 있어도 뒤의 잘못된 입력을 놓치지 않는지 확인한다.
+- 단일 입력이 TagCheck와 같은 결과인지 확인한다.
+- 하나 이상 있으면 true인지 확인한다.
+- 중복 입력을 허용하고 결과에 영향이 없는지 확인한다.
+- 불필요한 HashSet 할당이 없는지 확인한다.
+- 단계 12 교체 주석과 영어 로그 문구를 확인한다.
+
+11. TryGetTag 검수
+- 시그니처가 (public bool TryGetTag(TagDefinition definition, out TagInstance instance))인지 확인한다.
+- 메서드 시작 시 out 값을 Null로 초기화하는지 확인한다.
+- Null Definition이면 false와 Null인지 확인한다.
+- None ID이면 false와 Null인지 확인한다.
+- 같은 ID가 있으면 저장된 실제 Instance를 반환하는지 확인한다.
+- 다른 Definition 참조라도 같은 ID이면 조회 성공하는지 확인한다.
+- 없는 경우 false와 Null인지 확인한다.
+- 로그와 상태 변경이 없는지 확인한다.
+- TagID overload가 공개 API로 추가되지 않았는지 확인한다.
+
+12. 테스트 구조 검수
+- GameObject를 생성하고 AddComponent<TagContainer>()를 사용하는지 확인한다.
+- TagDefinition을 CreateInstance로 생성하는지 확인한다.
+- SerializedObject로 private 필드를 설정하는지 확인한다.
+- TagInstance internal 생성자를 사용하는지 확인한다.
+- TearDown에서 GameObject와 ScriptableObject를 DestroyImmediate로 정리하는지 확인한다.
+- 프로젝트 에셋을 생성하지 않는지 확인한다.
+- helper가 테스트 클래스 내부 private 범위에 머무는지 확인한다.
+- 공용 Test Factory가 조기 도입되지 않았는지 확인한다.
+
+13. 내부 삽입 테스트 검수
+- 다음 테스트 또는 동일 의미의 테스트가 있는지 확인한다.
+-- TryAddInstance_WhenInstanceIsValid_AddsAndReturnsTrue
+-- TryAddInstance_WhenInstanceIsNull_ReturnsFalse
+-- TryAddInstance_WhenTagIDIsNone_ReturnsFalse
+-- TryAddInstance_WhenSameInstanceIDAlreadyExists_ReturnsFalse
+-- TryAddInstance_WhenDifferentDefinitionHasSameID_ReturnsFalseAndKeepsExisting
+- 오류 로그에 LogAssert를 사용하는지 확인한다.
+- 기존 Instance 유지와 컬렉션 개수를 검증하는지 확인한다.
+
+14. TagScan 테스트 검수
+- 다음 테스트 또는 동일 의미의 테스트가 있는지 확인한다.
+-- TagScan_WhenContainerIsEmpty_ReturnsNonNullEmptyCollection
+-- TagScan_WhenTagsExist_ReturnsAllInstances
+-- TagScan_WhenTagIsAddedAfterScan_DoesNotChangePreviousSnapshot
+- 반환 순서에 의존하지 않는지 확인한다.
+- 구체 컬렉션 타입을 강제하지 않는지 확인한다.
+- 제거 관련 테스트가 조기 추가되지 않았는지 확인한다.
+
+15. TagCheck 테스트 검수
+- 다음 테스트 또는 동일 의미의 테스트가 있는지 확인한다.
+-- Definition 존재
+-- Definition 미존재
+-- Null Definition
+-- None ID
+-- 같은 ID 다른 Definition
+-- ID overload 존재
+-- ID overload 미존재
+-- ID overload None
+- 조회가 Definition 참조 동일성을 요구한다는 잘못된 기대가 없는지 확인한다.
+
+16. TagANDCheck 테스트 검수
+- 모든 태그 존재
+- 하나 미존재
+- Null 배열
+- 빈 배열
+- 내부 Null과 Error 로그
+- 내부 None과 Error 로그
+- 단일 태그
+- 중복 태그
+- 전체 입력 선검증을 충분히 검증하는지 확인한다.
+
+17. TagORCheck 테스트 검수
+- 하나 이상 존재
+- 모두 미존재
+- Null 배열
+- 빈 배열
+- 내부 Null과 Error 로그
+- 내부 None과 Error 로그
+- 보유 태그 뒤 Null이 있어도 false
+- 단일 태그
+- 중복 태그
+- 전체 입력 선검증을 충분히 검증하는지 확인한다.
+
+18. TryGetTag 테스트 검수
+- 존재 시 같은 Instance
+- 미존재 시 false와 Null
+- Null Definition
+- None ID
+- 같은 ID 다른 Definition 조회 성공
+- out 값이 이전 쓰레기 값을 유지하지 않고 Null이 되는지 확인한다.
+
+19. 코드 스타일 검수
+- var를 사용하지 않았는지 확인한다.
+- BSD 중괄호 스타일을 따르는지 확인한다.
+- private 필드가 camelCase인지 확인한다.
+- XML 문서 주석은 영어인지 확인한다.
+- 일반 코드 주석은 한글인지 확인한다.
+- 로그 문구는 영어인지 확인한다.
+- 불필요한 #region이 없는지 확인한다.
+- Nullable Reference Type이 도입되지 않았는지 확인한다.
+- 사용하지 않는 using과 경고 가능 코드를 검토한다.
+
+20. 범위 초과 검수
+- 다음 기능이 조기 구현되지 않았는지 확인한다.
+-- public TagAdd
+-- public TagSub
+-- PerishableTagAdd
+-- TagActivate
+-- 제거용 internal 메서드
+-- Trait 생명주기
+-- ITagTrait
+-- TraitContext
+-- 이벤트
+-- TagChangeEventData
+-- 재진입 가드
+-- Tick 또는 Update
+-- StackPolicy 실제 처리
+-- TagInstance 상태 변경 메서드
+-- TagDiagnostics
+-- OnValidate
+-- Editor Validator
+-- TryGetTag(TagID, out TagInstance) 공개 overload
+-- Count 프로퍼티
+-- PlayMode 테스트
+-- Sample 코드
+- 단계 0과 단계 1 테스트가 삭제 또는 변경되지 않았는지 확인한다.
+- TagDefinition, TagInstance, enum 또는 Assembly 설정이 불필요하게 변경되지 않았는지 확인한다.
+
+21. 결과 보고 검수
+- 생성 및 수정 파일이 정확히 보고되었는지 확인한다.
+- 구현한 공개 API와 internal API가 보고되었는지 확인한다.
+- 테스트 메서드 목록이 보고되었는지 확인한다.
+- Unity 컴파일을 실제로 확인하지 않았다면 성공으로 보고하지 않았는지 확인한다.
+- 테스트를 실제 실행하지 않았다면 통과했다고 보고하지 않았는지 확인한다.
+- 다음 상태 또는 동일 의미가 포함되어 있는지 확인한다.
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+- 사용자 수동 검증 항목이 명시되어 있는지 확인한다.
+
+22. 사용자 수동 검증 항목
+- Unity Editor에서 프로젝트 컴파일 오류 확인
+- GameObject에 TagContainer를 AddComponent할 수 있는지 확인
+- 단계 0 환경 테스트 회귀 실행
+- 단계 1 테스트 전체 회귀 실행
+- TagContainerTests 전체 실행
+- LogAssert 오류 로그 테스트 실행
+- Test Runner 결과 확인
+- 이 항목은 AI가 실제 확인했다고 주장하지 않는다.
+
+23. 문제 분류 기준
+
+23.1. 차단 문제
+- Dictionary 외부 노출
+- TagScan 실시간 뷰 반환
+- ID 기반 조회 대신 Definition 참조 동일성 요구
+- 같은 ID의 다른 Definition 삽입을 정상 허용
+- AND/OR 전체 입력 선검증 누락
+- TryAddInstance public 노출
+- 단계 3 이후 기능 조기 구현
+- 기존 TagDefinition 또는 TagInstance 공개 API 파괴 변경
+- 테스트 실행 결과 허위 보고
+
+23.2. 수정 권장 문제
+- 파일 경로 또는 네임스페이스 오타
+- XML 주석 또는 코드 스타일 위반
+- 일부 경계 테스트 누락
+- 불필요한 LINQ, HashSet 또는 할당
+- 로그 주석 누락
+- 완료 보고 항목 일부 누락
+
+23.3. 사용자 확인 필요
+- Unity 컴파일 결과
+- EditMode 테스트 실행 결과
+- AddComponent 가능 여부
+- Assembly 참조와 LogAssert 동작 결과
+
+24. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 2 - TagContainer와 조회 API
+
+(차단 문제)
+- 없음 또는 파일 경로, 문제 내용, 영향 범위
+
+(수정 권장 문제)
+- 없음 또는 파일 경로, 문제 내용, 권장 수정
+
+(범위 초과)
+- 없음 또는 조기 구현된 파일과 기능
+
+(TagContainer 검수)
+- 클래스 선언
+- Dictionary 캡슐화
+- 생명주기 메서드 부재
+
+(내부 삽입 검수)
+- 시그니처
+- 입력 검증
+- 중복 처리
+- Definition 불일치 처리
+
+(조회 API 검수)
+- TagScan
+- TagCheck
+- TagANDCheck
+- TagORCheck
+- TryGetTag
+
+(테스트 검수)
+- 객체 생성과 정리
+- 내부 삽입
+- TagScan
+- TagCheck
+- AND/OR
+- TryGetTag
+- 로그 검증
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(사용자 확인 필요)
+- 남은 수동 확인 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 2 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 판단 근거

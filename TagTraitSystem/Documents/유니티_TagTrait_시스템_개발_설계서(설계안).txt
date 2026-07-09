@@ -1,0 +1,1076 @@
+문서의 구성은 (N.n. 제목)으로 나눈다.
+(-)로 세부 설명임을 표시하며 해당 설명의 상세 설명 등 하위 설명으로 들어갈수록 -의 개수가 많아진다.(트리구조와 유사)
+괄호로 둘러싼 부분은 추가 설명이나 예시, 계산식, 그리고 스크립트 내 단어 등을 의미한다.
+쌍따옴표("")는 런타임 내의 고유 단어나 게임 내 UI에서 보여질 문장, 단어를 의미한다.
+{}는 그룹으로 묶어 설명하는 것, 특정한 값이나 정의라는 뜻, 또는 구간을 구분하기 위해 사용한다.
+[]는 강조할 일이 있을 때 사용한다.
+//은 주석으로 필자만 보는 용도로 작성한 의미로 분석 시 무시하면 되는 부분이다. 줄 단위로 주석을 작성한다.
+
+유니티용 태그특징(TagTrait) 시스템 개발 설계서
+
+0. 문서 개요
+- 본 문서는 유니티용 태그특징(TagTrait) 시스템의 초기 기획을 실제 개발 순서에 맞게 재구성한 개발 설계서이다.
+- 개발은 Cursor를 사용하여 진행하며 한 번에 전체 시스템을 구현하지 않는다.
+- 개발은 {단계별 설계 확인}, {최소 기능 구현}, {테스트}, {결과 확인}, {다음 단계 진행}을 반복하는 방식으로 진행한다.
+- 각 개발 단계는 이전 단계에서 완성되고 테스트된 기능만 의존해야 한다.
+- 각 개발 단계는 독립적으로 컴파일되고 테스트할 수 있어야 한다.
+- 단계가 완료되기 전에는 다음 단계의 기능을 함께 구현하지 않는다.
+- 본 설계서에서 [초기 구현]은 첫 번째 사용 가능한 버전에 반드시 포함하는 기능을 의미한다.
+- 본 설계서에서 [확장 구현]은 초기 구현 완료 후 추가하는 기능을 의미한다.
+- 본 설계서에서 [보류]는 필드 또는 확장 지점만 유지하거나 구현 자체를 연기하는 기능을 의미한다.
+
+0.1. 개발 목표
+- NPC, 아이템, 환경 오브젝트 등 상호작용 가능한 대상이 복수의 태그(Tag)를 보유할 수 있도록 한다.
+- 태그의 존재 여부를 검사하여 조건 분기와 상호작용에 사용할 수 있도록 한다.
+- 태그에 특징(Trait)을 연결하여 태그를 통해 개발자가 작성한 알고리즘을 실행할 수 있도록 한다.
+- 태그를 런타임에 추가, 제거, 갱신할 수 있도록 한다.
+- 영구 태그와 일정 시간 이후 사라지는 소멸 태그를 지원한다.
+- 동일 태그가 다시 추가될 때 태그별 중첩 정책(StackPolicy)에 따라 처리할 수 있도록 한다.
+- 태그 변경 이벤트를 통해 다른 시스템과의 결합도를 낮춘다.
+- 2D, 3D, PC, 모바일 등 프로젝트 환경에 종속되지 않는 구조를 지향한다.
+- 태그와 Trait을 추가할 때 기존 핵심 코드를 수정하는 범위를 최소화한다.
+
+0.2. 초기 구현 원칙
+- 첫 구현은 Unity의 Inspector와 에셋 작업 흐름을 고려하여 ScriptableObject 기반 정의 방식을 우선한다.
+- 핵심 동작 계약은 인터페이스로 정의하여 이후 순수 C# Trait 구현을 추가할 수 있도록 한다.
+- 런타임 태그 상태와 원본 태그 정의를 분리한다.
+-- 원본 정의는 (TagDefinition)이다.
+-- 오브젝트가 실제로 보유하는 런타임 상태는 (TagInstance)이다.
+- 동일 태그 판정은 (TagID)를 기준으로 한다.
+- 태그 보유 컬렉션은 (Dictionary<TagID, TagInstance>)를 기본 구조로 사용한다.
+- 런타임 상태인 (TagInstance)는 참조형 클래스(class)로 구현한다.
+- 태그 보유와 API 제공의 중심 객체는 (TagContainer)로 한다.
+- 시간 감소 로직은 테스트 가능하도록 공개된 (Tick(float deltaTime)) 내부 API로 분리한다.
+- Unity의 (Update)에서는 (Tick(Time.deltaTime))만 호출한다.
+- 초기 테스트는 Unity Test Framework의 EditMode 테스트를 중심으로 작성한다.
+- Unity 생명주기와 실제 프레임 진행이 필요한 항목만 PlayMode 테스트로 작성한다.
+
+0.3. 초기 구현에서 확정하는 정책
+- 태그 ID가 동일하면 같은 태그로 판정한다.
+- 서로 다른 TagDefinition이 같은 TagID를 사용할 경우 유효하지 않은 데이터로 판정하고 경고한다.
+- Trait이 없는 태그는 키워드 태그("KeyWordTag")로 판정한다.
+- 키워드 태그는 조회와 조건 검사에는 사용할 수 있지만 (TagActivate)로 실행할 수 없다.
+- 키워드 태그를 실행하려 하면 false를 반환하고 디버그 로그를 남긴다.
+- 영구 태그는 (TagSub)로 제거되기 전까지 유지된다.
+- 소멸 태그는 남은 시간이 0 이하가 되면 제거된다.
+- 태그 시간값은 초 단위로 처리한다.
+- 입력 시간값은 소수점 첫째 자리까지 반올림한다.
+- 반올림 결과가 0 이하이면 0.1초로 보정한다.
+- 중복 추가, 시간 갱신, 스택 변경 등 실제 상태가 변하지 않은 경우 변경 이벤트를 발생시키지 않는다.
+- 자연적인 시간 감소는 (OnTagUpdated)를 발생시키지 않는다.
+- API 실패는 기본적으로 예외를 발생시키지 않고 false를 반환하며 디버그가 활성화된 경우 로그를 남긴다.
+- 개발자 실수로 시스템을 계속 진행할 수 없는 초기화 오류는 Unity 검증 단계에서 경고 또는 오류로 표시한다.
+
+0.4. 초기 구현에서 제외하는 항목
+- 태그 상호 배타 그룹의 실제 제거 및 교체 처리
+- 태그 우선순위에 따른 실행 순서 정렬
+- 복잡한 태그 조건 객체
+- 태그 저장 및 복원
+- Runtime Registry 또는 Runtime Set
+- 시간을 누적하는 (Extend) 중첩 정책
+- 순수 C# Trait의 Inspector 직렬화 지원
+- 네트워크 동기화
+- DOTS 또는 ECS 전용 구현
+- 런타임 중 TagDefinition 생성 및 파괴
+
+1. 전체 구조
+
+1.1. 주요 데이터 흐름
+- 개발자는 (TagDefinition) 에셋을 생성한다.
+- (TagDefinition)은 태그의 ID, 이름, 카테고리, Trait, 중첩 정책을 가진다.
+- 태그를 가질 오브젝트에는 (TagContainer) 컴포넌트를 추가한다.
+- (TagAdd) 또는 (PerishableTagAdd)를 호출하면 (TagContainer)가 (TagInstance)를 생성하거나 기존 상태를 갱신한다.
+- 태그가 처음 추가되면 Trait의 (OnAdd)가 호출된다.
+- (TagActivate)를 호출하면 Trait의 (OnActivate)가 호출된다.
+- 태그가 완전히 제거되면 Trait의 (OnRemove)가 호출된다.
+- 태그 상태 변화 후 외부 시스템에 태그 변경 이벤트를 전달한다.
+
+1.2. 주요 클래스와 책임
+- (TagDefinition)
+-- 태그의 원본 설정 데이터를 저장한다.
+-- 런타임 중 변경하지 않는 것을 원칙으로 한다.
+- (TagInstance)
+-- 오브젝트가 현재 보유한 태그의 런타임 상태를 저장한다.
+-- 시간값, 남은 시간값, 스택값, 유한성 여부를 가진다.
+- (TagContainer)
+-- 오브젝트가 보유한 태그 컬렉션을 관리한다.
+-- 태그 조회, 추가, 제거, 실행, 시간 감소 API를 제공한다.
+-- Trait 생명주기와 태그 변경 이벤트 호출을 관리한다.
+- (ITagTrait)
+-- Trait이 구현해야 하는 생명주기 함수의 계약을 정의한다.
+- (TagTraitSO)
+-- ScriptableObject 기반 Trait의 추상 기반 클래스이다.
+- (TraitContext)
+-- Trait 호출 시 Source, Target, 실행 태그, 수치값, 런타임 태그 상태를 전달한다.
+- (TagChangeEventData)
+-- 태그 추가, 제거, 갱신 이벤트에 필요한 정보를 전달한다.
+- (TagDiagnostics)
+-- 디버그 활성화 여부와 공통 로그 출력을 관리한다.
+
+1.3. 권장 폴더 구조
+- (Assets/TagTraitSystem/Runtime/Core)
+-- TagID.cs
+-- TagCategory.cs
+-- StackPolicy.cs
+-- TagChangeReason.cs
+-- TraitContext.cs
+-- TagChangeEventData.cs
+- (Assets/TagTraitSystem/Runtime/Definitions)
+-- TagDefinition.cs
+- (Assets/TagTraitSystem/Runtime/Traits)
+-- ITagTrait.cs
+-- TagTraitSO.cs
+- (Assets/TagTraitSystem/Runtime/Components)
+-- TagContainer.cs
+- (Assets/TagTraitSystem/Runtime/Diagnostics)
+-- TagDiagnostics.cs
+- (Assets/TagTraitSystem/Editor)
+-- TagDefinitionValidator.cs([확장 구현])
+- (Assets/TagTraitSystem/Tests/EditMode)
+-- 데이터 구조와 API 단위 테스트
+- (Assets/TagTraitSystem/Tests/PlayMode)
+-- MonoBehaviour 생명주기와 시간 진행 통합 테스트
+- (Assets/TagTraitSystem/Samples)
+-- 테스트 및 예제용 Trait과 Sample Scene
+
+1.4. Assembly Definition 구성
+- Runtime 코드는 별도의 Assembly Definition으로 분리한다.
+-- (TagTraitSystem.Runtime)
+- Editor 코드는 Runtime Assembly를 참조하는 별도 Assembly로 분리한다.
+-- (TagTraitSystem.Editor)
+- EditMode 테스트는 Runtime Assembly를 참조한다.
+-- (TagTraitSystem.Tests.EditMode)
+- PlayMode 테스트는 Runtime Assembly를 참조한다.
+-- (TagTraitSystem.Tests.PlayMode)
+- 초기 단계에서 Assembly Definition 설정이 개발을 방해할 경우 1단계 완료 후 추가할 수 있다.
+
+2. 핵심 데이터 설계
+
+2.1. TagID
+- 모든 태그를 식별하는 고유 ID이다.
+- 초기 구현은 enum으로 작성한다.
+- 첫 값은 (None = 0)으로 둔다.
+- (None)은 실제 태그로 사용할 수 없다.
+- 서로 다른 enum 이름에 같은 숫자값을 배정하지 않는다.
+- 동일성 비교와 Dictionary Key에는 태그 이름이 아닌 TagID를 사용한다.
+- 태그 이름은 표시와 디버깅 용도로만 사용한다.
+
+2.2. TagCategory
+- 태그의 용도와 종류를 분류하는 enum이다.
+- 첫 값은 (None = 0)으로 둔다.
+- 카테고리는 조회 편의와 에디터 분류를 위한 값이며 동일성 판정에는 사용하지 않는다.
+- 프로젝트마다 필요한 항목을 추가할 수 있다.
+-- (Status)
+-- (Item)
+-- (Character)
+-- (Interaction)
+-- (Keyword)
+
+2.3. StackPolicy
+- 동일한 소멸 태그 또는 중첩 가능한 영구 태그가 다시 추가될 때의 처리 방식을 정의한다.
+- 초기 구현 항목은 다음과 같다.
+-- (MaxDuration)
+-- (StackCount)
+-- (Refresh)
+- (Extend)는 enum에 미리 추가하지 않고 실제 구현 시점에 추가한다.
+-- 사용되지 않는 enum 값은 잘못된 설정을 만들 수 있으므로 보류 기능은 코드에 조기 추가하지 않는다.
+
+2.4. TagDefinition
+- (ScriptableObject)를 상속한다.
+- 태그의 원본 설정 데이터를 저장한다.
+- 필드는 Inspector에서 직렬화하고 외부에는 읽기 전용 프로퍼티로 공개한다.
+- 기본 필드는 다음과 같다.
+-- 태그 ID(TagID)
+-- 태그 이름(String)
+-- 카테고리(TagCategory)
+-- Trait(TagTraitSO)
+-- 중첩 정책(StackPolicy)
+-- 상호 배타 그룹(ExclusiveGroup)([보류], 초기값 None)
+-- 우선순위(Priority)([보류], 초기값 0)
+-- 저장 가능 여부(IsSaveable)([보류], 초기값 false)
+- Trait 필드가 Null이면 키워드 태그로 판정한다.
+- (IsKeywordTag) 읽기 전용 프로퍼티를 제공한다.
+- TagID가 None이거나 태그 이름이 비어 있으면 유효하지 않은 정의로 판정한다.
+- TagDefinition 자체는 런타임 상태를 저장하지 않는다.
+- 여러 오브젝트가 같은 TagDefinition을 공유해도 서로의 런타임 상태에 영향을 주지 않아야 한다.
+
+2.5. TagInstance
+- 오브젝트가 실제로 보유하는 태그의 런타임 상태이다.
+- 참조형 봉인 클래스(sealed class)로 구현한다.
+- 기본 필드는 다음과 같다.
+-- Definition(TagDefinition)
+-- Duration(float)
+-- RemainingTime(float)
+-- StackCount(int)
+-- IsPerishable(bool)
+- 외부 시스템이 임의로 상태를 변경하지 못하도록 setter 접근 범위를 제한한다.
+- 상태 변경은 TagContainer의 내부 메서드만 수행한다.
+- 영구 태그의 초기 상태는 다음과 같다.
+-- Duration = 0
+-- RemainingTime = 0
+-- StackCount = 1
+-- IsPerishable = false
+- 소멸 태그의 초기 상태는 다음과 같다.
+-- Duration = 정규화된 입력 시간값
+-- RemainingTime = 정규화된 입력 시간값
+-- StackCount = 1
+-- IsPerishable = true
+- StackCount는 항상 1 이상인 상태에서만 TagInstance가 컬렉션에 존재한다.
+- StackCount가 0이 되면 TagInstance를 컬렉션에서 제거한다.
+
+2.6. TraitContext
+- Trait 호출에 필요한 실행 정보를 하나의 값으로 전달한다.
+- 값 타입(readonly struct)으로 구현한다.
+- 기본 필드는 다음과 같다.
+-- Source(GameObject)
+-- Target(GameObject)
+-- ActivatedTag(TagDefinition)
+-- Instance(TagInstance)
+-- Value(float)
+- Source는 Trait 실행을 요청한 오브젝트이다.
+- Target은 Trait 효과가 적용되는 오브젝트이다.
+- Target을 지정하지 않으면 Source를 사용한다.
+- ActivatedTag는 실행 중인 TagDefinition이다.
+- Instance는 Source 또는 대상 TagContainer가 보유한 해당 태그 상태이다.
+- Value는 추가 수치가 필요한 Trait을 위한 범용 실수값이다.
+- 초기 기본값은 0이다.
+
+2.7. TagChangeReason
+- (OnTagUpdated) 또는 공통 이벤트 데이터에서 변경 원인을 구분하기 위한 enum이다.
+- 초기 항목은 다음과 같다.
+-- Added
+-- Removed
+-- DurationRefreshed
+-- DurationExtendedToMax
+-- StackIncreased
+-- StackDecreased
+-- ChangedToPermanent
+-- Expired
+- Added와 Removed는 공통 이벤트 데이터 일관성을 위해 포함한다.
+- 실제 이벤트 종류는 OnTagAdded, OnTagRemoved, OnTagUpdated로 분리한다.
+
+2.8. TagChangeEventData
+- 태그 이벤트 구독자에게 변경 내용을 전달하는 읽기 전용 값 타입이다.
+- 기본 필드는 다음과 같다.
+-- Owner(TagContainer)
+-- Definition(TagDefinition)
+-- Instance(TagInstance)
+-- Reason(TagChangeReason)
+-- PreviousDuration(float)
+-- PreviousRemainingTime(float)
+-- PreviousStackCount(int)
+-- PreviousIsPerishable(bool)
+- 제거 이벤트에서도 제거 직전의 Instance 정보를 확인할 수 있어야 한다.
+- 제거 후 Instance를 다시 컬렉션에 넣어서는 안 된다.
+
+3. Trait 설계
+
+3.1. ITagTrait
+- Trait 동작의 공통 계약이다.
+- 생명주기 함수는 다음과 같다.
+-- (void OnAdd(TraitContext context))
+-- (bool OnActivate(TraitContext context))
+-- (void OnRemove(TraitContext context))
+- OnAdd는 태그가 오브젝트에 처음 추가될 때 한 번 호출한다.
+- OnActivate는 TagActivate가 명시적으로 호출될 때 실행한다.
+- OnRemove는 태그가 완전히 제거될 때 한 번 호출한다.
+- 스택 증가와 감소만으로는 OnAdd와 OnRemove를 호출하지 않는다.
+- 소멸 태그가 영구 태그로 전환될 때 OnAdd와 OnRemove를 다시 호출하지 않는다.
+- Trait 내부 예외가 전체 태그 컬렉션을 손상시키지 않도록 TagContainer에서 예외를 포착하고 로그를 남긴다.
+- OnActivate에서 예외가 발생하면 false를 반환한다.
+- OnAdd 또는 OnRemove에서 예외가 발생해도 태그 상태 변경 자체는 완료되도록 한다.
+
+3.2. TagTraitSO
+- ScriptableObject를 상속하고 ITagTrait을 구현하는 추상 클래스이다.
+- 기본 구조는 다음과 같다.
+-- OnActivate는 abstract로 작성한다.
+-- OnAdd는 virtual 빈 구현을 제공한다.
+-- OnRemove는 virtual 빈 구현을 제공한다.
+- 단순 실행형 Trait은 OnActivate만 구현할 수 있어야 한다.
+- 지속 효과가 있는 Trait은 OnAdd와 OnRemove를 재정의할 수 있어야 한다.
+- Trait 에셋은 런타임 상태를 직접 저장하지 않는다.
+-- 여러 오브젝트가 같은 Trait 에셋을 공유하므로 오브젝트별 상태를 Trait 필드에 저장하면 안 된다.
+-- 오브젝트별 상태는 TagInstance 또는 대상 컴포넌트에 저장한다.
+
+3.3. 순수 C# Trait 확장
+- ITagTrait 인터페이스는 순수 C# 클래스에서도 구현할 수 있다.
+- 초기 TagDefinition의 Inspector 필드는 TagTraitSO 타입으로 제한한다.
+- 순수 C# Trait을 TagDefinition에 직접 직렬화하는 기능은 [확장 구현]으로 둔다.
+- 추후 필요 시 다음 중 한 방식을 별도 설계한다.
+-- SerializeReference 기반 연결
+-- Trait Factory 기반 연결
+-- 코드 Registry 기반 연결
+-- TagDefinition과 런타임 Trait Provider 분리
+- 초기 구현에서는 두 연결 방식을 동시에 지원하지 않는다.
+
+4. TagContainer 설계
+
+4.1. 역할
+- 태그를 가질 오브젝트에 부착하는 MonoBehaviour 컴포넌트이다.
+- 오브젝트가 보유한 TagInstance 컬렉션을 관리한다.
+- 태그 조회, 추가, 제거, 실행, 시간 갱신 기능을 제공한다.
+- Trait 생명주기와 태그 변경 이벤트를 호출한다.
+- 다른 시스템은 Dictionary를 직접 수정할 수 없다.
+
+4.2. 내부 컬렉션
+- 기본 구조는 (Dictionary<TagID, TagInstance>)이다.
+- Dictionary는 런타임에 초기화한다.
+- 외부에는 읽기 전용 결과만 제공한다.
+- TagID.None은 컬렉션 Key로 사용할 수 없다.
+- 같은 TagID는 하나의 TagInstance만 가질 수 있다.
+- StackCount는 동일 TagID의 여러 Instance를 만드는 대신 한 Instance 내부의 숫자로 관리한다.
+
+4.3. 공개 조회 API
+- (IReadOnlyCollection<TagInstance> TagScan())
+-- 현재 보유한 모든 태그 상태를 읽기 전용 형태로 반환한다.
+-- 외부에서 컬렉션을 직접 수정할 수 없어야 한다.
+- (bool TagCheck(TagDefinition definition))
+-- 전달한 정의와 동일한 TagID를 가진 태그가 존재하는지 반환한다.
+- (bool TagCheck(TagID tagID))
+-- TagID를 직접 사용한 조회가 필요할 경우 제공한다.
+- (bool TagANDCheck(params TagDefinition[] definitions))
+-- 전달한 모든 태그를 보유하고 있으면 true를 반환한다.
+- (bool TagORCheck(params TagDefinition[] definitions))
+-- 전달한 태그 중 하나 이상을 보유하면 true를 반환한다.
+- (bool TryGetTag(TagDefinition definition, out TagInstance instance))
+-- 태그 상태의 시간값 또는 스택값을 읽어야 할 때 사용한다.
+- Check 계열 API는 Trait을 실행하지 않는다.
+- Check 계열 API는 상태를 변경하지 않는다.
+
+4.4. AND, OR 입력 정책
+- Null 배열은 잘못된 입력으로 처리하고 false를 반환한다.
+- 배열 내부에 Null TagDefinition이 있으면 false를 반환하고 디버그 로그를 남긴다.
+- 빈 배열은 false를 반환한다.
+- 태그가 하나만 전달되어도 일반 TagCheck와 같은 결과를 반환한다.
+-- 호출부가 배열 개수에 따라 다른 API를 선택하지 않아도 되도록 한다.
+- 두 개 이상 전달된 경우 본래의 AND 또는 OR 정책을 적용한다.
+
+4.5. 공개 변경 API
+- (bool TagAdd(TagDefinition definition, GameObject source = null))
+-- 영구 태그를 추가한다.
+- (bool TagSub(TagDefinition definition, GameObject source = null))
+-- 보유 태그의 스택을 감소시키거나 완전히 제거한다.
+- (bool PerishableTagAdd(TagDefinition definition, float timeValue = 10f, GameObject source = null))
+-- 일정 시간 동안 유지되는 태그를 추가하거나 기존 상태를 갱신한다.
+- (bool TagActivate(TagDefinition definition, GameObject source = null, GameObject target = null, float value = 0f))
+-- 태그와 연결된 Trait의 OnActivate를 실행한다.
+- source가 Null이면 TagContainer가 부착된 GameObject를 Source로 사용한다.
+- target이 Null이면 Source를 Target으로 사용한다.
+
+4.6. 태그 추가 처리 순서
+- TagDefinition 입력을 검증한다.
+- 동일 TagID의 기존 TagInstance가 있는지 검사한다.
+- 기존 태그가 없으면 새 TagInstance를 생성한다.
+- Dictionary에 새 TagInstance를 먼저 등록한다.
+- Trait이 있으면 OnAdd를 호출한다.
+- OnTagAdded 이벤트를 호출한다.
+- 성공 로그를 남긴다.
+- true를 반환한다.
+- OnAdd 호출 시점에는 TagCheck가 true를 반환해야 한다.
+
+4.7. 태그 제거 처리 순서
+- TagDefinition 입력을 검증한다.
+- 기존 TagInstance를 찾는다.
+- StackPolicy가 StackCount이고 StackCount가 2 이상이면 스택만 1 감소시킨다.
+-- OnRemove는 호출하지 않는다.
+-- OnTagUpdated를 호출한다.
+-- true를 반환한다.
+- 완전히 제거해야 하는 경우 Trait의 OnRemove를 호출한다.
+- Dictionary에서 TagInstance를 제거한다.
+- OnTagRemoved 이벤트를 호출한다.
+- 성공 로그를 남긴다.
+- true를 반환한다.
+- OnRemove 호출 중에는 제거 대상 Instance를 Context로 확인할 수 있다.
+- OnTagRemoved 호출 시점에는 TagCheck가 false를 반환해야 한다.
+
+4.8. 콜백 중 재진입 정책
+- Trait 생명주기와 이벤트 콜백에서 다른 태그를 추가하거나 제거하는 것은 허용한다.
+- 현재 처리 중인 동일 태그를 같은 TagContainer에서 다시 변경하는 재진입은 초기 구현에서 차단한다.
+- 처리 중인 TagID를 내부 HashSet으로 추적한다.
+- 같은 TagID에 대한 재진입 요청은 false를 반환하고 경고 로그를 남긴다.
+- 서로 다른 TagID에 대한 변경 요청은 정상 처리한다.
+- 통합 테스트 후 필요 시 명령 Queue 방식으로 확장한다.
+
+5. 태그 조회 기능 개발 설계
+
+5.1. TagScan
+- 현재 Dictionary에 저장된 TagInstance를 반환한다.
+- 반환 결과로 내부 Dictionary를 수정할 수 없어야 한다.
+- 태그가 없으면 비어 있는 컬렉션을 반환한다.
+- Null을 반환하지 않는다.
+
+5.2. TagCheck
+- TagDefinition이 Null이면 false를 반환한다.
+- TagID가 None이면 false를 반환한다.
+- Dictionary에 같은 TagID가 있으면 true를 반환한다.
+- 태그 이름과 참조 동일성은 판정에 사용하지 않는다.
+
+5.3. TagANDCheck
+- 전달된 모든 TagDefinition의 TagID가 Dictionary에 존재해야 true이다.
+- 하나라도 없으면 즉시 false를 반환할 수 있다.
+- 같은 태그가 배열에 중복으로 전달되어도 결과에는 영향을 주지 않는다.
+
+5.4. TagORCheck
+- 전달된 TagDefinition 중 하나라도 Dictionary에 존재하면 true이다.
+- 하나를 발견하면 즉시 true를 반환할 수 있다.
+- 모두 없으면 false를 반환한다.
+
+6. 영구 태그 개발 설계
+
+6.1. TagAdd 기본 처리
+- 기존 태그가 없으면 영구 TagInstance를 생성한다.
+- 새 Instance의 StackCount는 1이다.
+- Trait의 OnAdd를 한 번 호출한다.
+- OnTagAdded를 한 번 호출한다.
+- true를 반환한다.
+
+6.2. 동일 영구 태그 추가
+- StackPolicy가 StackCount가 아니면 기존 상태를 유지하고 false를 반환한다.
+- StackPolicy가 StackCount이면 StackCount를 1 증가시킨다.
+- 시간값은 변경하지 않는다.
+- OnAdd는 호출하지 않는다.
+- OnTagUpdated를 (StackIncreased) 이유로 한 번 호출한다.
+- true를 반환한다.
+
+6.3. 소멸 태그를 TagAdd로 추가
+- 동일한 소멸 태그가 이미 있으면 해당 Instance를 영구 태그 상태로 변경한다.
+- IsPerishable을 false로 변경한다.
+- Duration을 0으로 변경한다.
+- RemainingTime을 0으로 변경한다.
+- StackCount는 유지한다.
+- OnAdd와 OnRemove를 호출하지 않는다.
+- OnTagUpdated를 (ChangedToPermanent) 이유로 한 번 호출한다.
+- true를 반환한다.
+
+6.4. TagSub 기본 처리
+- 해당 태그가 없으면 false를 반환한다.
+- StackPolicy가 StackCount이고 스택이 2 이상이면 스택만 1 감소시킨다.
+- 스택 감소 시 RemainingTime은 변경하지 않는다.
+- OnTagUpdated를 (StackDecreased) 이유로 호출한다.
+- 스택이 1이거나 StackCount 정책이 아니면 태그를 완전히 제거한다.
+- 완전 제거 시 OnRemove와 OnTagRemoved를 각각 한 번 호출한다.
+
+7. 태그 변경 이벤트 설계
+
+7.1. 이벤트 종류
+- (event Action<TagChangeEventData> OnTagAdded)
+- (event Action<TagChangeEventData> OnTagRemoved)
+- (event Action<TagChangeEventData> OnTagUpdated)
+
+7.2. OnTagAdded 발생 조건
+- 기존에 없던 TagID의 TagInstance가 새로 생성된 경우에만 발생한다.
+- 스택 증가에는 발생하지 않는다.
+- 소멸 태그의 시간 갱신에는 발생하지 않는다.
+- 소멸 태그가 영구 태그로 전환될 때 발생하지 않는다.
+
+7.3. OnTagRemoved 발생 조건
+- TagInstance가 Dictionary에서 완전히 제거된 경우에만 발생한다.
+- StackCount가 N에서 N-1로 감소했으나 Instance가 남아 있으면 발생하지 않는다.
+- 시간 만료로 마지막 스택이 제거된 경우 발생한다.
+
+7.4. OnTagUpdated 발생 조건
+- 태그의 유한성 여부가 변경된 경우
+- 외부 API 호출 또는 StackPolicy 처리로 Duration 또는 RemainingTime이 재설정된 경우
+- StackCount가 증가하거나 감소한 경우
+- 자연적인 매 프레임 시간 감소에는 발생하지 않는다.
+- 기존 값과 새 값이 같아 실제 변경이 없으면 발생하지 않는다.
+
+7.5. 이벤트 예외 처리
+- 이벤트 구독자의 예외가 TagContainer의 내부 상태 처리를 중단시키지 않도록 한다.
+- 개별 구독 호출 예외 처리 방식이 필요할 경우 InvocationList를 순회한다.
+- 초기 구현에서는 공통 SafeInvoke 내부 메서드를 사용한다.
+- 예외 발생 시 오류 로그를 남기고 나머지 구독자를 계속 호출한다.
+
+8. Trait 실행 개발 설계
+
+8.1. TagActivate 검증
+- TagDefinition이 Null이면 false를 반환한다.
+- TagID가 None이면 false를 반환한다.
+- TagContainer가 해당 태그를 보유하지 않으면 false를 반환한다.
+- TagDefinition의 Trait이 Null이면 키워드 태그 실행 시도로 판정한다.
+- 키워드 태그 실행 시 false를 반환하고 로그를 남긴다.
+
+8.2. TraitContext 생성
+- Source가 지정되지 않았으면 TagContainer의 GameObject를 사용한다.
+- Target이 지정되지 않았으면 Source를 사용한다.
+- ActivatedTag는 전달된 TagDefinition을 사용한다.
+- Instance는 Dictionary에서 조회한 현재 TagInstance를 사용한다.
+- Value는 호출자가 전달한 값을 사용한다.
+
+8.3. OnActivate 호출
+- Trait.OnActivate(Context)를 호출한다.
+- Trait의 반환값을 TagActivate의 반환값으로 전달한다.
+- Trait 내부 예외가 발생하면 오류 로그를 남기고 false를 반환한다.
+- TagActivate 자체는 태그를 추가하거나 제거하지 않는다.
+
+8.4. OnAdd와 OnRemove 호출
+- OnAdd는 TagInstance가 처음 생성된 경우에만 호출한다.
+- OnRemove는 TagInstance가 완전히 제거되는 경우에만 호출한다.
+- StackCount 증가 및 감소에는 호출하지 않는다.
+- 시간 갱신에는 호출하지 않는다.
+- 소멸 상태에서 영구 상태로 전환할 때 호출하지 않는다.
+
+9. 소멸 태그 개발 설계
+
+9.1. 시간값 정규화
+- 입력 시간값은 먼저 소수점 첫째 자리까지 반올림한다.
+- 중간값은 0에서 멀어지는 방향(MidpointRounding.AwayFromZero)으로 처리한다.
+- 반올림 결과가 0 이하이면 0.1로 변경한다.
+- NaN 또는 Infinity가 전달되면 유효하지 않은 입력으로 처리한다.
+-- false를 반환한다.
+-- 오류 로그를 남긴다.
+- 정규화된 값을 Duration과 RemainingTime에 사용한다.
+
+9.2. 새 소멸 태그 추가
+- 기존 태그가 없으면 소멸 TagInstance를 생성한다.
+- Duration과 RemainingTime에 정규화된 시간값을 저장한다.
+- StackCount는 1이다.
+- IsPerishable은 true이다.
+- OnAdd를 호출한다.
+- OnTagAdded를 호출한다.
+- true를 반환한다.
+
+9.3. 동일 영구 태그가 존재하는 경우
+- 기존 태그가 영구 태그이면 PerishableTagAdd 요청을 무시한다.
+- 기존 상태를 변경하지 않는다.
+- OnAdd, OnRemove, 태그 변경 이벤트를 호출하지 않는다.
+- false를 반환한다.
+
+9.4. Tick
+- (public void Tick(float deltaTime))로 구현한다.
+- deltaTime이 0 이하이면 아무것도 처리하지 않는다.
+- 소멸 태그만 RemainingTime을 감소시킨다.
+- RemainingTime은 계산 중 음수가 될 수 있으나 외부 노출 시 최소 0으로 보정할 수 있다.
+- Dictionary 순회 중 직접 제거하지 않는다.
+- 만료된 TagID를 별도 목록에 수집한 뒤 순회가 끝난 후 처리한다.
+- 자연 감소에는 OnTagUpdated를 호출하지 않는다.
+
+9.5. 일반 소멸 태그 만료
+- RemainingTime이 0 이하가 되면 태그를 완전히 제거한다.
+- OnRemove를 호출한다.
+- Dictionary에서 제거한다.
+- OnTagRemoved를 (Expired) 이유로 호출한다.
+
+9.6. StackCount 소멸 태그 만료
+- RemainingTime이 0 이하가 되면 StackCount를 1 감소시킨다.
+- 감소 후 StackCount가 1 이상이면 태그를 유지한다.
+-- RemainingTime을 Duration으로 갱신한다.
+-- OnRemove는 호출하지 않는다.
+-- OnTagUpdated를 (StackDecreased) 이유로 한 번 호출한다.
+- 감소 후 StackCount가 0이면 태그를 완전히 제거한다.
+-- RemainingTime을 갱신하지 않는다.
+-- OnRemove를 호출한다.
+-- OnTagRemoved를 (Expired) 이유로 호출한다.
+
+10. 중첩 정책 개발 설계
+
+10.1. 개발 순서
+- 중첩 정책은 한 단계에서 모두 구현하지 않는다.
+- 구현 순서는 {Refresh}, {MaxDuration}, {StackCount}로 한다.
+- 각 정책의 테스트가 통과한 뒤 다음 정책을 구현한다.
+
+10.2. Refresh
+- 동일 소멸 태그가 다시 추가되면 Duration을 새 입력 시간값으로 변경한다.
+- RemainingTime도 새 입력 시간값으로 변경한다.
+- StackCount는 변경하지 않는다.
+- OnAdd와 OnRemove는 호출하지 않는다.
+- 이전 값과 새 값이 다르면 OnTagUpdated를 (DurationRefreshed) 이유로 호출한다.
+- 값이 같아도 재추가 시점을 기준으로 RemainingTime이 달라졌다면 변경 이벤트를 호출한다.
+- Duration과 RemainingTime이 모두 이미 같은 경우 상태 변화가 없으므로 false를 반환한다.
+
+10.3. MaxDuration
+- 동일 소멸 태그가 다시 추가되면 새 시간값과 현재 RemainingTime을 비교한다.
+- 새 시간값이 RemainingTime보다 큰 경우에만 갱신한다.
+- 갱신 시 Duration과 RemainingTime을 새 시간값으로 변경한다.
+- OnTagUpdated를 (DurationExtendedToMax) 이유로 호출한다.
+- 새 시간값이 RemainingTime보다 작거나 같으면 무시하고 false를 반환한다.
+- 영구 태그가 존재하면 PerishableTagAdd를 무시한다.
+
+10.4. StackCount 영구 태그
+- 동일 영구 태그가 TagAdd로 다시 추가되면 StackCount를 1 증가시킨다.
+- OnAdd는 호출하지 않는다.
+- OnTagUpdated를 (StackIncreased) 이유로 호출한다.
+- TagSub 호출 시 StackCount를 1 감소시킨다.
+- 감소 후 스택이 1 이상이면 OnTagUpdated를 (StackDecreased) 이유로 호출한다.
+- 감소 후 스택이 0이면 태그를 완전히 제거한다.
+
+10.5. StackCount 소멸 태그
+- 동일 소멸 태그가 PerishableTagAdd로 다시 추가되면 StackCount를 1 증가시킨다.
+- 시간값은 Refresh 정책을 적용한다.
+- Stack 증가와 시간 갱신을 하나의 상태 변경으로 처리한다.
+- OnTagUpdated는 한 번만 호출한다.
+- 이벤트 이유는 (StackIncreased)로 하고 변경 전후 시간값도 EventData에 포함한다.
+- TagSub로 스택이 감소하는 경우 RemainingTime은 변경하지 않는다.
+- 시간 만료로 스택이 감소하는 경우 RemainingTime을 Duration으로 갱신한다.
+
+11. 디버깅 및 검증 설계
+
+11.1. TagDiagnostics
+- 정적 클래스(static class)로 시작한다.
+- (Enabled) bool 플래그를 제공한다.
+- Enabled가 false이면 일반 성공 및 실패 로그를 출력하지 않는다.
+- 데이터 손상 가능성이 있는 오류는 Enabled와 관계없이 Debug.LogError로 출력할 수 있다.
+- 공통 접두어는 ("[TagTrait]")로 한다.
+
+11.2. 우선 로그 대상
+- Trait 실행 성공 및 실패
+- TagAdd 성공 및 실패
+- TagSub 성공 및 실패
+- PerishableTagAdd 신규 추가, 갱신, 무시
+- TagActivate 실행 및 실패
+- KeyWordTag 실행 시도
+- Null TagDefinition 전달
+- TagID.None 사용 시도
+- 서로 다른 TagDefinition의 동일 TagID 감지
+- Trait 및 이벤트 콜백 예외
+- 동일 태그 재진입 차단
+
+11.3. TagDefinition 검증
+- OnValidate 또는 Editor 검증 도구를 통해 다음 항목을 검사한다.
+-- TagID가 None인지
+-- 태그 이름이 비어 있는지
+-- 태그 이름의 앞뒤 공백
+-- Priority 등 보류 필드의 비정상 값
+- 전체 에셋 간 중복 ID와 중복 이름 검사는 Editor 전용 Validator에서 처리한다.
+- 런타임에서 프로젝트 전체 Asset을 자동 검색하는 방식은 초기 구현에서 사용하지 않는다.
+- 중복은 경고하되 플레이를 강제로 종료시키지 않는다.
+
+11.4. 로그 문자열 관리
+- 로그 문자열은 TagContainer 내부에 산재시키지 않고 TagDiagnostics 메서드로 모은다.
+- 로그에는 다음 정보가 포함되어야 한다.
+-- Owner 오브젝트 이름
+-- TagID
+-- 태그 이름
+-- 요청 API 이름
+-- 성공 또는 실패 이유
+- 로그 문자열 자체는 런타임 게임 UI 문구로 사용하지 않는다.
+
+12. 테스트 설계
+
+12.1. 테스트 기본 원칙
+- 각 개발 단계에서 구현 코드와 테스트 코드를 함께 작성한다.
+- 다음 단계로 진행하기 전에 기존 테스트 전체가 통과해야 한다.
+- 테스트는 정상 흐름, 경계값, 실패 흐름을 포함한다.
+- 테스트를 위해 실제 게임용 Trait을 사용하지 않고 호출 횟수를 기록하는 Test Trait을 사용한다.
+- 테스트 이름은 {대상_조건_기대결과} 형식으로 작성한다.
+-- (TagAdd_WhenTagDoesNotExist_AddsTagAndReturnsTrue)
+
+12.2. 테스트 보조 Trait
+- (SpyTagTraitSO)를 테스트 전용 ScriptableObject로 작성한다.
+- 기록 항목은 다음과 같다.
+-- OnAdd 호출 횟수
+-- OnActivate 호출 횟수
+-- OnRemove 호출 횟수
+-- 마지막 TraitContext
+-- OnActivate 반환값 설정
+-- 예외 발생 여부 설정
+- 런타임 배포 Assembly에 포함하지 않는다.
+
+12.3. 1단계 데이터 테스트
+- TagDefinition이 설정값을 보존하는지 확인한다.
+- Trait이 Null일 때 IsKeywordTag가 true인지 확인한다.
+- 영구 TagInstance의 초기값을 확인한다.
+- 소멸 TagInstance의 초기값을 확인한다.
+- StackCount가 1로 시작하는지 확인한다.
+
+12.4. 2단계 조회 테스트
+- 빈 TagContainer의 TagScan이 빈 컬렉션을 반환하는지 확인한다.
+- 존재하는 태그의 TagCheck가 true인지 확인한다.
+- 없는 태그의 TagCheck가 false인지 확인한다.
+- AND 조건을 모두 만족할 때 true인지 확인한다.
+- AND 조건 중 하나가 없을 때 false인지 확인한다.
+- OR 조건 중 하나가 있을 때 true인지 확인한다.
+- OR 조건이 모두 없을 때 false인지 확인한다.
+- Null, 빈 배열, 단일 태그 입력을 확인한다.
+
+12.5. 3단계 영구 태그 테스트
+- 최초 TagAdd가 true를 반환하는지 확인한다.
+- 최초 추가 후 TagCheck가 true인지 확인한다.
+- 일반 정책의 중복 TagAdd가 false인지 확인한다.
+- 존재하는 태그의 TagSub가 true인지 확인한다.
+- 제거 후 TagCheck가 false인지 확인한다.
+- 없는 태그의 TagSub가 false인지 확인한다.
+- 하나의 태그 제거가 다른 태그에 영향을 주지 않는지 확인한다.
+
+12.6. 4단계 이벤트 테스트
+- 신규 추가 시 OnTagAdded가 한 번 발생하는지 확인한다.
+- 중복 추가 무시 시 이벤트가 발생하지 않는지 확인한다.
+- 완전 제거 시 OnTagRemoved가 한 번 발생하는지 확인한다.
+- 스택 변경 시 OnTagUpdated만 발생하는지 확인한다.
+- 이벤트 시점의 TagCheck 결과가 정의된 순서와 일치하는지 확인한다.
+- 이벤트 구독자 예외 후 다른 구독자가 호출되는지 확인한다.
+
+12.7. 5단계 Trait 테스트
+- 최초 추가 시 OnAdd가 한 번 호출되는지 확인한다.
+- 중복 추가 시 OnAdd가 다시 호출되지 않는지 확인한다.
+- TagActivate 시 OnActivate가 한 번 호출되는지 확인한다.
+- OnActivate 반환값이 TagActivate 반환값과 같은지 확인한다.
+- 완전 제거 시 OnRemove가 한 번 호출되는지 확인한다.
+- 키워드 태그 실행 시 false인지 확인한다.
+- Source와 Target 기본값 및 명시값을 확인한다.
+- Trait 예외가 TagContainer 상태를 손상시키지 않는지 확인한다.
+
+12.8. 6단계 소멸 태그 테스트
+- 기본값 10초로 생성되는지 확인한다.
+- 1.24가 1.2로 정규화되는지 확인한다.
+- 1.25가 1.3으로 정규화되는지 확인한다.
+- 0 이하의 값이 0.1로 정규화되는지 확인한다.
+- NaN과 Infinity가 거부되는지 확인한다.
+- Tick 후 RemainingTime이 감소하는지 확인한다.
+- 자연 감소 중 OnTagUpdated가 발생하지 않는지 확인한다.
+- 만료 시 해당 태그만 제거되는지 확인한다.
+- 여러 태그가 같은 Tick에서 만료되어도 예외가 없는지 확인한다.
+
+12.9. 7단계 상태 전환 테스트
+- 소멸 태그에 TagAdd를 호출하면 영구 태그로 전환되는지 확인한다.
+- 전환 후 Duration과 RemainingTime이 0인지 확인한다.
+- 전환 시 OnAdd와 OnRemove가 호출되지 않는지 확인한다.
+- 전환 시 OnTagUpdated가 한 번 발생하는지 확인한다.
+- 영구 태그에 PerishableTagAdd를 호출하면 무시되는지 확인한다.
+
+12.10. 8단계 중첩 정책 테스트
+- Refresh가 Duration과 RemainingTime을 새 값으로 변경하는지 확인한다.
+- MaxDuration이 더 큰 값만 적용하는지 확인한다.
+- StackCount가 재추가 시 1 증가하는지 확인한다.
+- StackCount의 TagSub가 1만 감소시키는지 확인한다.
+- 마지막 스택 제거 시 OnRemove와 OnTagRemoved가 호출되는지 확인한다.
+- 소멸 StackCount 만료 시 스택 감소 후 시간이 Duration으로 복구되는지 확인한다.
+- 소멸 StackCount 마지막 스택 만료 시 태그가 제거되는지 확인한다.
+
+12.11. PlayMode 테스트
+- Update가 Tick을 호출하여 실제 프레임에서 시간이 감소하는지 확인한다.
+- GameObject 파괴 시 이벤트 또는 Trait 정리가 필요한지 통합 프로젝트에서 확인한다.
+- Time.timeScale 영향을 받는 현재 방식이 요구사항과 일치하는지 확인한다.
+-- 초기 구현은 Time.deltaTime을 사용하므로 timeScale의 영향을 받는다.
+-- 비영향 시간이 필요하면 추후 별도 옵션을 설계한다.
+
+13. 단계별 개발 계획
+
+13.1. 개발 단계 0 - 프로젝트 준비와 정책 고정
+- 목표는 구현 전에 파일 구조와 테스트 환경을 준비하는 것이다.
+- 구현 항목은 다음과 같다.
+-- 기본 폴더 생성
+-- Unity Test Framework 사용 확인
+-- Runtime, Tests 폴더 분리
+-- 네임스페이스 결정
+-- 코딩 규칙 결정
+- 이 단계에서는 실제 태그 로직을 구현하지 않는다.
+- 완료 조건은 다음과 같다.
+-- 빈 EditMode 테스트가 실행되고 통과한다.
+-- Runtime 코드와 Test 코드의 참조 관계가 정상이다.
+
+13.2. 개발 단계 1 - Enum과 데이터 구조
+- 구현 항목은 다음과 같다.
+-- TagID
+-- TagCategory
+-- StackPolicy
+-- TagChangeReason
+-- TagDefinition
+-- TagInstance
+- Trait 연결은 필드 또는 최소 추상 타입까지만 작성하고 실행하지 않는다.
+- 테스트 항목은 12.3을 따른다.
+- 완료 조건은 다음과 같다.
+-- 모든 데이터 생성 테스트 통과
+-- 컴파일 경고 및 오류 없음
+-- TagDefinition과 TagInstance의 책임이 분리됨
+
+13.3. 개발 단계 2 - TagContainer와 조회 API
+- 구현 항목은 다음과 같다.
+-- TagContainer 기본 구조
+-- Dictionary 초기화
+-- TagScan
+-- TagCheck
+-- TagANDCheck
+-- TagORCheck
+-- TryGetTag
+- 테스트 데이터 투입을 위한 내부 또는 테스트 전용 추가 메서드를 사용할 수 있다.
+- 아직 Trait, 이벤트, 시간 로직을 구현하지 않는다.
+- 테스트 항목은 12.4를 따른다.
+- 완료 조건은 모든 조회 테스트 통과이다.
+
+13.4. 개발 단계 3 - 영구 TagAdd와 TagSub
+- 구현 항목은 다음과 같다.
+-- 일반 영구 태그 추가
+-- 중복 추가 방지
+-- 일반 태그 제거
+-- 입력 유효성 검사
+- StackCount 정책은 이 단계에서 아직 적용하지 않는다.
+- Trait과 이벤트도 아직 호출하지 않는다.
+- 테스트 항목은 12.5를 따른다.
+- 완료 조건은 기본 CRUD 테스트 통과이다.
+
+13.5. 개발 단계 4 - 태그 변경 이벤트
+- 구현 항목은 다음과 같다.
+-- TagChangeEventData
+-- OnTagAdded
+-- OnTagRemoved
+-- OnTagUpdated 선언
+-- SafeInvoke
+-- 기본 추가 및 제거 이벤트 연결
+- OnTagUpdated는 이후 기능에서 사용할 수 있도록 선언하지만 이 단계에서는 발생 조건이 적을 수 있다.
+- 테스트 항목은 12.6의 추가 및 제거 관련 항목을 우선 적용한다.
+- 완료 조건은 이벤트 순서와 발생 횟수 테스트 통과이다.
+
+13.6. 개발 단계 5 - Trait 생명주기와 TagActivate
+- 구현 항목은 다음과 같다.
+-- ITagTrait
+-- TagTraitSO
+-- TraitContext
+-- OnAdd 연결
+-- OnRemove 연결
+-- TagActivate
+-- KeyWordTag 처리
+-- Trait 예외 처리
+- 테스트 항목은 12.7을 따른다.
+- 완료 조건은 Spy Trait 기반 생명주기 테스트 통과이다.
+
+13.7. 개발 단계 6 - 소멸 태그 기본 기능
+- 구현 항목은 다음과 같다.
+-- 시간값 정규화 함수
+-- PerishableTagAdd 신규 추가
+-- Tick
+-- 일반 소멸 태그 만료
+-- Update에서 Tick 호출
+- 중복 소멸 태그 정책은 아직 구현하지 않는다.
+-- 동일 소멸 태그 재추가는 임시로 false 처리한다.
+- 테스트 항목은 12.8을 따른다.
+- 완료 조건은 단일 소멸 태그의 생성, 감소, 만료 테스트 통과이다.
+
+13.8. 개발 단계 7 - 영구 및 소멸 상태 전환
+- 구현 항목은 다음과 같다.
+-- 소멸 태그에 TagAdd 호출 시 영구 전환
+-- 영구 태그에 PerishableTagAdd 호출 시 무시
+-- ChangedToPermanent 이벤트
+- 테스트 항목은 12.9를 따른다.
+- 완료 조건은 상태 전환과 생명주기 미호출 테스트 통과이다.
+
+13.9. 개발 단계 8 - Refresh 정책
+- 구현 항목은 다음과 같다.
+-- 동일 소멸 태그 Refresh
+-- Duration과 RemainingTime 갱신
+-- DurationRefreshed 이벤트
+- 다른 중첩 정책은 아직 변경하지 않는다.
+- 완료 조건은 Refresh 관련 테스트 전체 통과이다.
+
+13.10. 개발 단계 9 - MaxDuration 정책
+- 구현 항목은 다음과 같다.
+-- RemainingTime 비교
+-- 더 큰 시간값만 적용
+-- DurationExtendedToMax 이벤트
+-- 같거나 작은 값 무시
+- 완료 조건은 MaxDuration 관련 테스트 전체 통과이다.
+
+13.11. 개발 단계 10 - StackCount 영구 태그
+- 구현 항목은 다음과 같다.
+-- 영구 태그 중복 추가 시 스택 증가
+-- TagSub 시 스택 감소
+-- 마지막 스택 완전 제거
+-- StackIncreased 및 StackDecreased 이벤트
+- 완료 조건은 영구 StackCount 테스트 전체 통과이다.
+
+13.12. 개발 단계 11 - StackCount 소멸 태그
+- 구현 항목은 다음과 같다.
+-- 소멸 태그 중복 추가 시 스택 증가
+-- Refresh 시간 처리 결합
+-- 수동 TagSub 시 시간 유지
+-- 만료 시 스택 감소 및 시간 복구
+-- 마지막 스택 만료 시 완전 제거
+- 완료 조건은 소멸 StackCount 테스트 전체 통과이다.
+
+13.13. 개발 단계 12 - 디버깅과 데이터 검증
+- 구현 항목은 다음과 같다.
+-- TagDiagnostics
+-- API 성공 및 실패 로그
+-- KeyWordTag 실행 로그
+-- 중복 ID 및 이름 검증
+-- 잘못된 TagDefinition 경고
+-- 동일 태그 재진입 차단
+- 완료 조건은 로그 활성화와 비활성화가 정상 동작하고 핵심 경고를 확인할 수 있는 것이다.
+
+13.14. 개발 단계 13 - 통합 테스트와 Sample
+- 구현 항목은 다음과 같다.
+-- 예제 TagDefinition
+-- 예제 Keyword Tag
+-- 예제 Trait
+-- Sample Scene
+-- 전체 상호작용 통합 테스트
+- 통합 시나리오는 다음과 같다.
+-- Poison 태그를 3초로 추가한다.
+-- OnAdd 호출을 확인한다.
+-- TagCheck로 보유 여부를 확인한다.
+-- TagActivate로 Poison Trait을 실행한다.
+-- 동일 태그를 다시 추가하여 정책에 따른 갱신을 확인한다.
+-- 시간이 만료되면 OnRemove와 OnTagRemoved를 확인한다.
+- 완료 조건은 Sample Scene에서 Console 오류 없이 전체 흐름을 재현하는 것이다.
+
+13.15. 개발 단계 14 - 초기 버전 정리
+- 공개 API 이름과 매개변수를 최종 검토한다.
+- XML 문서 주석을 작성한다.
+- 사용하지 않는 테스트 보조 코드를 Runtime에서 제거한다.
+- Assembly Definition과 Namespace를 정리한다.
+- README 또는 사용 예제를 작성한다.
+- 초기 버전 태그를 지정한다.(예시: v0.1.0)
+- 이 단계 완료 후에만 보류 기능 개발 여부를 검토한다.
+
+14. Cursor를 이용한 단계별 작업 절차
+
+14.1. 한 단계의 작업 단위
+- Cursor에는 현재 단계의 목표만 전달한다.
+- 이전 단계에서 확정된 공개 API를 임의로 변경하지 않도록 지시한다.
+- 현재 단계에 포함되지 않은 다음 기능을 미리 구현하지 않도록 지시한다.
+- 작업 순서는 다음과 같다.
+-- 현재 코드와 테스트 구조 확인
+-- 해당 단계 테스트 작성 또는 테스트 목록 확정
+-- 최소 구현 작성
+-- 컴파일 오류 수정
+-- 해당 단계 테스트 실행
+-- 기존 전체 테스트 실행
+-- 실패 원인 수정
+-- 변경 파일과 공개 API 검토
+-- 단계 완료 기록
+
+14.2. Cursor 요청에 포함할 내용
+- 현재 개발 단계 번호와 제목
+- 구현할 파일 목록
+- 구현할 공개 API
+- 이번 단계에서 구현하지 않을 항목
+- 반드시 통과해야 할 테스트 목록
+- 기존 코드 변경 허용 범위
+- 완료 시 보고받을 내용
+-- 생성 및 수정한 파일
+-- 구현한 기능
+-- 테스트 결과
+-- 남은 문제
+-- 다음 단계에 영향을 주는 설계 변경 여부
+
+14.3. Cursor 요청 시 금지 사항
+- 전체 시스템을 한 번에 생성하도록 요청하지 않는다.
+- 테스트 없이 기능만 연속해서 구현하지 않는다.
+- 아직 검증되지 않은 추상 계층을 과도하게 추가하지 않는다.
+- 보류 기능을 사용 가능하다는 가정으로 코드를 작성하지 않는다.
+- 기존 테스트를 삭제하거나 기대값을 임의로 완화하여 통과시키지 않는다.
+- 공개 API 변경이 필요한 경우 변경 이유와 영향 범위를 먼저 보고하도록 한다.
+
+14.4. 단계 완료 기록 형식
+- 완료한 개발 단계
+- 변경 파일
+- 추가된 공개 API
+- 통과한 테스트 수
+- 실패 또는 보류한 테스트
+- 발견된 설계 문제
+- 설계서 수정 필요 여부
+- 다음 단계 시작 가능 여부
+
+15. 오류 및 예외 처리 기준
+
+15.1. false를 반환하는 경우
+- Null TagDefinition
+- TagID.None
+- 없는 태그 TagSub
+- 일반 정책 태그의 중복 TagAdd
+- 영구 태그에 PerishableTagAdd 호출
+- 없는 태그 TagActivate
+- KeyWordTag TagActivate
+- MaxDuration에서 새 시간이 기존 RemainingTime보다 작거나 같은 경우
+- 동일 태그 재진입 요청
+
+15.2. true를 반환하는 경우
+- 새 태그가 실제로 추가된 경우
+- 태그가 실제로 완전히 제거된 경우
+- StackCount가 실제로 증가하거나 감소한 경우
+- 소멸 태그가 영구 태그로 실제 전환된 경우
+- Refresh 또는 MaxDuration으로 시간값이 실제 변경된 경우
+- Trait의 OnActivate가 true를 반환한 경우(TagActivate)
+
+15.3. 예외를 포착하는 경우
+- Trait OnAdd, OnActivate, OnRemove 내부 예외
+- 이벤트 구독자 내부 예외
+- 포착된 예외는 로그를 남긴다.
+- 예외로 인해 Dictionary가 절반만 변경된 상태로 남지 않도록 처리 순서를 유지한다.
+
+15.4. 개발 중 즉시 중단하고 설계를 재검토할 경우
+- TagDefinition과 TagInstance의 책임이 혼합되는 경우
+- 하나의 태그가 Dictionary에 복수 Instance로 들어가야만 구현 가능한 요구가 발생한 경우
+- Trait 에셋에 오브젝트별 런타임 상태를 저장해야 하는 구조가 된 경우
+- 콜백 재진입으로 상태 일관성을 보장할 수 없는 경우
+- 공개 API가 단계마다 반복적으로 파괴 변경되는 경우
+- 시간 정책이 현재 StackCount 모델로 표현되지 않는 경우
+
+16. 보류 및 확장 기능
+
+16.1. 태그 상호 배타 그룹(ExclusiveGroup)
+- 초기 TagDefinition에 필드와 None 값만 둔다.
+- 실제 자동 제거 및 교체 로직은 구현하지 않는다.
+- 초기 버전과 Sample 프로젝트 검증 후 우선 개발 후보로 둔다.
+- 구현 전 다음 정책을 별도 확정해야 한다.
+-- 새 태그가 기존 태그를 제거하는지
+-- 우선순위가 높은 태그만 유지하는지
+-- 제거 시 OnRemove와 이벤트를 호출하는지
+
+16.2. 태그 우선순위(Priority)
+- 초기 TagDefinition에 정수 필드만 둔다.
+- 초기 TagActivate와 이벤트 순서에는 사용하지 않는다.
+- 여러 태그를 일괄 실행하는 API가 생길 때 적용한다.
+
+16.3. 태그 조건 객체
+- 복잡한 AND, OR, NOT, 개수 조건이 실제 프로젝트에서 필요할 때 설계한다.
+- 초기 Check API를 대체하지 않고 상위 계층으로 추가한다.
+
+16.4. 태그 저장 및 복원
+- IsSaveable 필드만 유지한다.
+- 저장 데이터에는 TagID, IsPerishable, Duration, RemainingTime, StackCount가 필요할 수 있다.
+- TagDefinition 참조 자체를 직접 저장하지 않는다.
+- 저장 시스템의 ID 안정성 정책이 확정된 후 구현한다.
+
+16.5. Runtime Registry 또는 Runtime Set
+- 초기 구현에서는 구조를 만들지 않는다.
+- 실제 요구가 생기면 TagContainer 이벤트를 구독하는 별도 서비스로 구현한다.
+- TagContainer 핵심 로직이 Registry를 직접 의존하지 않도록 한다.
+- 등록 시점은 OnTagAdded 이후이다.
+- 제거 시점은 OnTagRemoved 이후이다.
+
+16.6. Extend 정책
+- 기존 RemainingTime 또는 Duration에 새 시간값을 더하는 정책이다.
+- MaxDuration, Refresh, StackCount와 의미가 충돌하지 않도록 별도 StackPolicy로 추가한다.
+- 시간 상한, 이벤트 이유, StackCount 결합 방식을 확정한 뒤 구현한다.
+
+16.7. 순수 C# Trait 연결
+- 초기 ScriptableObject 방식의 사용성과 한계를 검증한 뒤 추가한다.
+- ITagTrait 계약과 TraitContext는 그대로 재사용한다.
+- TagContainer가 구체 구현 타입을 알지 않도록 유지한다.
+
+17. 초기 버전 완료 기준
+- TagDefinition 에셋을 생성할 수 있다.
+- TagContainer가 복수 태그를 보유할 수 있다.
+- TagScan, TagCheck, TagANDCheck, TagORCheck가 정상 동작한다.
+- TagAdd와 TagSub로 영구 태그를 관리할 수 있다.
+- PerishableTagAdd와 Tick으로 소멸 태그를 관리할 수 있다.
+- Refresh, MaxDuration, StackCount 정책이 각각 정의된 방식으로 동작한다.
+- OnAdd, OnActivate, OnRemove가 정확한 시점과 횟수로 호출된다.
+- OnTagAdded, OnTagRemoved, OnTagUpdated가 정확한 조건에서 발생한다.
+- 키워드 태그를 조건 검사에 사용할 수 있다.
+- 키워드 태그 실행 시도가 안전하게 실패한다.
+- 잘못된 입력과 중복 정의를 로그로 추적할 수 있다.
+- 모든 EditMode 단위 테스트가 통과한다.
+- 필수 PlayMode 통합 테스트가 통과한다.
+- Sample Scene에서 추가, 검사, 실행, 갱신, 만료, 제거 흐름을 확인할 수 있다.
+
+18. 개발 진행 우선순위 요약
+- 개발 순서는 다음과 같이 고정한다.
+-- {프로젝트 준비}
+-- {Enum과 데이터 구조}
+-- {TagContainer와 조회}
+-- {영구 태그 추가 및 제거}
+-- {태그 변경 이벤트}
+-- {Trait 생명주기와 실행}
+-- {소멸 태그와 시간 처리}
+-- {영구 및 소멸 상태 전환}
+-- {Refresh}
+-- {MaxDuration}
+-- {StackCount 영구 태그}
+-- {StackCount 소멸 태그}
+-- {디버깅과 데이터 검증}
+-- {통합 테스트와 Sample}
+-- {초기 버전 정리}
+- 각 단계는 구현과 테스트가 모두 완료되어야 다음 단계로 넘어간다.
+- 계획 변경이 필요한 경우 현재 단계 구현을 확장하기 전에 본 설계서의 관련 정책부터 수정한다.

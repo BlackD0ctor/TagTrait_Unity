@@ -1,0 +1,313 @@
+유니티 TagTrait 시스템 개발 단계 13-1 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 13-1
+- 원래 개발 단계: 13
+- 단계 제목: Runtime 통합 테스트
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- 수정된 (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0~12-2 완료 기록
+- 기준 충돌 우선순위:
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: 수정된 AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반적인 Unity 또는 C# 관례
+- 충돌 발견 시 임의로 API나 테스트를 변경하지 말고 문제, 영향 범위 및 권장안을 보고한다.
+
+1. 현재 단계 목표
+- 단계 0~12에서 구현된 공개 API가 실제 사용 흐름에서 함께 동작하는지 검증한다.
+- 세부 단위 테스트를 반복하지 않고 대표적인 생명주기와 정책 조합을 검증한다.
+- 영구 태그, Keyword, Refresh, MaxDuration, StackCount, 소멸→영구 전환, Diagnostics를 통합 검증한다.
+- PlayMode Test Assembly를 추가하지 않는다.
+- EditMode 통합 테스트와 사용자 수동 Sample 검증을 사용한다.
+- 새로운 Runtime 기능을 구현하지 않는다.
+
+2. 이전 단계 전제
+- Runtime, Editor Validator, Diagnostics가 단계 12까지 완료되어 있다.
+- 사용자가 단계 12 컴파일과 회귀 테스트를 확인한 상태를 전제로 한다.
+- TagContainer 공개 API, Trait 생명주기, 이벤트, Tick, StackCount 정책이 존재한다.
+- 선행 기능이 누락되었으면 대체 기능을 만들지 말고 누락 상태를 보고한다.
+
+3. 생성 및 수정 파일
+
+3.1. 생성
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystemIntegrationTests.cs)
+- 필요 시:
+-- (Assets/TagTraitSystem/Tests/EditMode/IntegrationRecordingTraitSO.cs)
+
+3.2. 조건부 수정
+- 기존 테스트 보조 Trait가 통합 시나리오 기록에 충분하면 재사용한다.
+- 기존 Test Assembly나 Runtime Assembly는 변경하지 않는다.
+
+3.3. 수정 금지
+- Runtime 공개 API
+- Editor Validator
+- Assembly Definition
+- Package 파일
+- Sample Assembly와 Sample 코드
+- TagID enum
+- StackCount Tick 구조
+
+4. 테스트 형식
+- 기존 TagTraitSystem.Tests.EditMode Assembly에서 작성한다.
+- PlayMode Tests Assembly를 만들지 않는다.
+- GameObject, TagContainer, ScriptableObject는 EditMode 테스트에서 생성한다.
+- Tick은 공개 Tick(float)을 직접 호출한다.
+- Update, Coroutine, 물리, Scene 로딩에 의존하지 않는다.
+
+5. 통합 테스트 책임
+- 여러 API와 정책이 순차적으로 연결되는지를 검증한다.
+- 각 기능의 모든 경계값을 다시 반복하지 않는다.
+- 다음은 기존 단위 테스트에 위임한다.
+-- 모든 잘못된 float 조합
+-- 모든 재진입 조합
+-- 모든 이벤트 예외 조합
+-- 모든 Validator 개별 검사
+-- 모든 enum 숫자값
+- 대표 시나리오에서 상태, Trait, 이벤트, 로그가 일관적인지 확인한다.
+
+6. 통합 기록 Trait
+- 기존 보조 Trait가 부족할 때만 IntegrationRecordingTraitSO를 Test Assembly에 생성한다.
+- TagTraitSO를 상속한다.
+- 기록:
+-- OnAdd 호출 횟수
+-- OnRemove 호출 횟수
+-- OnActivate 호출 횟수
+-- 마지막 TraitContext
+-- 호출 순서
+-- 설정 가능한 OnActivate 반환값
+- Runtime Assembly에는 추가하지 않는다.
+- Runtime 상태를 ScriptableObject에 저장하는 실제 시스템 코드로 오해되지 않도록 테스트 전용임을 주석으로 명시한다.
+- TearDown에서 DestroyImmediate로 제거한다.
+
+7. 통합 시나리오 - 영구 실행형 태그
+- TagAdd
+- OnAdd
+- OnTagAdded
+- TagActivate
+- OnActivate
+- TagSub
+- OnRemove
+- OnTagRemoved
+- 검증:
+-- Target == container.gameObject
+-- Container
+-- Source
+-- Definition
+-- 같은 TagInstance 참조
+-- 호출 순서
+-- 최종 미보유 상태
+-- Added/Removed Reason
+-- Activate 반환값
+
+8. 통합 시나리오 - Keyword
+- Keyword Definition을 TagAdd한다.
+- Added 이벤트가 발생한다.
+- TagActivate는 false이다.
+- Trait 호출과 로그가 없다.
+- TagSub로 제거한다.
+- Removed 이벤트가 발생한다.
+- 정상 Keyword가 유효한 상태 데이터로 취급되는지 확인한다.
+
+9. 통합 시나리오 - Refresh
+- PerishableTagAdd(5.0f)
+- Tick(2.0f)
+- PerishableTagAdd(3.0f)
+- Duration = 3.0f
+- RemainingTime = 3.0f
+- DurationRefreshed 한 번
+- 이후 Tick(3.0f)으로 만료
+- OnRemove와 Expired 확인
+- 최초 OnAdd가 갱신 때 다시 호출되지 않는지 확인한다.
+
+10. 통합 시나리오 - MaxDuration
+- PerishableTagAdd(5.0f)
+- Tick(3.0f)
+- PerishableTagAdd(4.0f)
+- 실제 연장 성공
+- DurationExtendedToMax 한 번
+- 더 짧은 입력은 false
+- no-op에서 로그와 이벤트 없음
+- 최종 Tick에서 정상 만료
+- Tick 중 비교 기준이 기존 단계 9 계약과 일치하는지 확인한다.
+
+11. 통합 시나리오 - 소멸 StackCount
+- StackPolicy.StackCount
+- MaxStackCount >= 3
+- PerishableTagAdd(5.0f)
+- Tick(2.0f)
+- PerishableTagAdd(5.0f)
+- StackCount = 2
+- RemainingTime = Duration = 5.0f
+- 큰 Tick으로 일부 스택 소진
+- StackDecreased Updated 한 번
+- 최종 TagSub 또는 Tick으로 제거
+- 검증:
+-- 동일 Duration
+-- 추가 시 시간 초기화
+-- 큰 Tick 초과시간 전달
+-- 중간 OnAdd/OnRemove 없음
+-- 완전 소진에서 StackCount 0 미사용
+-- 최종 Expired 또는 Removed 계약
+
+12. 통합 시나리오 - 소멸→영구 전환
+- PerishableTagAdd
+- Tick
+- TagAdd
+- ChangedToPermanent
+- 같은 Instance 유지
+- Duration = 0
+- RemainingTime = 0
+- StackCount 보존
+- 전환 호출에서 StackCount 추가 없음
+- 이후 Tick 무영향
+- TagSub로 최종 제거
+
+13. 통합 시나리오 - 여러 TagID 독립성
+- 한 Container에 서로 다른 정책의 태그를 동시에 보유한다.
+- 최소 구성:
+-- Keyword
+-- Refresh
+-- MaxDuration
+-- StackCount
+- 한 ID의 Add/Sub/Tick이 다른 ID 상태를 손상시키지 않는지 확인한다.
+- 하나가 만료되어도 다른 태그가 유지되는지 확인한다.
+- TagCheck, TryGetTag, TagScan 결과가 일관적인지 확인한다.
+- TagScan 스냅샷 구성과 내부 Instance 참조 상태 변경을 구분한다.
+
+14. 통합 시나리오 - Diagnostics 구분
+- 잘못된 데이터:
+-- Error
+- 동일 ID 재진입 또는 Nested Tick:
+-- Warning
+- 최대 스택 도달:
+-- 로그 없는 false
+- 모든 세부 로그 조합을 반복하지 않고 대표 흐름만 검증한다.
+- 정상 no-op를 오류로 오인하지 않는지 확인한다.
+
+15. 이벤트 순서 검증
+- 최초 추가:
+-- 등록
+-- OnAdd
+-- Added
+- 마지막 제거:
+-- OnRemove
+-- Dictionary 제거
+-- Removed
+- 만료:
+-- OnRemove
+-- Dictionary 제거
+-- Expired
+- 중간 StackCount 변화:
+-- 상태 변경
+-- Updated
+-- Trait 생명주기 없음
+- 한 공개 API 또는 Tick에서 같은 ID 외부 이벤트는 최대 한 번이다.
+
+16. 테스트 데이터 구성
+- ScriptableObject.CreateInstance<TagDefinition>() 사용
+- SerializedObject로 private 필드 설정
+- 테스트별로 서로 다른 TagID 사용
+- TestAlpha, TestBeta, TestGamma를 반복 사용하되 한 테스트 내부에서 ID 충돌이 없게 구성한다.
+- 단계 13-2 Sample ID는 통합 테스트에서 필수로 사용하지 않는다.
+- GameObject, Definition, Trait를 필드에 보관하고 TearDown에서 DestroyImmediate한다.
+
+17. 필수 테스트
+- Integration_PermanentTrait_CompletesFullLifecycle
+- Integration_Keyword_AddActivateRemove_IsTraitFree
+- Integration_Refresh_ResetsThenExpires
+- Integration_MaxDuration_ExtendsOnlyWhenNeededThenExpires
+- Integration_PerishableStackCount_AddTickAndRemove_CompletesLifecycle
+- Integration_PerishableToPermanent_StopsTickAndKeepsInstance
+- Integration_MultipleTagIDs_RemainIndependent
+- Integration_TagScanSnapshot_TracksCompositionButSharesInstances
+- Integration_Diagnostics_DistinguishesErrorWarningAndSilentNoOp
+- Integration_EventOrder_MatchesLifecycleContract
+
+18. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 테스트 이름 영어
+- NRT 미도입
+- 테스트 준비 코드는 중복이 과도할 때만 private helper로 정리한다.
+- Runtime public 테스트 API를 추가하지 않는다.
+
+19. 현재 단계 비범위
+- PlayMode Tests Assembly
+- Scene 로딩
+- Update 자동 실행 테스트
+- Sample 코드
+- Sample 에셋
+- 성능 벤치마크
+- StackCount Tick 구조 재설계
+- 저장/로드
+- 네트워크
+- ExclusiveGroup
+- Priority
+- IsSaveable 동작
+
+20. 금지 사항
+- 통합 테스트를 이유로 Runtime 공개 API를 추가하지 않는다.
+- 기존 단위 테스트를 삭제하지 않는다.
+- 모든 단위 경계 테스트를 중복 작성하지 않는다.
+- PlayMode 테스트를 조기 추가하지 않는다.
+- 실제 Scene 또는 Asset 파일을 테스트에서 생성하지 않는다.
+- 실행하지 않은 테스트를 통과했다고 보고하지 않는다.
+
+21. 작업 절차
+- 단계 12-2 완료 상태 확인
+- 기존 테스트 보조 Trait 검토
+- 대표 통합 시나리오 작성
+- 상태, Trait, 이벤트, 로그 검증
+- Unity Object 정리
+- 단계 0~12 회귀 정적 검토
+- 새 Runtime 기능이 없는지 확인
+- Unity 검증 미실행 상태 보고
+
+22. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 13-1 - Runtime 통합 테스트
+
+(생성한 파일)
+(수정한 파일)
+
+(통합 시나리오)
+- 영구
+- Keyword
+- Refresh
+- MaxDuration
+- StackCount
+- 전환
+- 여러 ID
+- Diagnostics
+
+(작성한 테스트)
+- 파일과 메서드
+
+(새 Runtime 기능 여부)
+- 없음
+
+(정적 검토)
+- API 조합
+- 이벤트 순서
+- TraitContext
+- 상태 독립성
+- 로그 구분
+- 범위 초과 없음
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 13-2 진행 가능

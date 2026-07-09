@@ -1,0 +1,633 @@
+유니티 TagTrait 시스템 개발 단계 5 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 5
+- 단계 제목: Trait 계약, 생명주기와 TagActivate
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0~4 완료 기록
+- 기준 충돌 우선순위:
+-- 1순위: 현재 단계 프롬프트
+-- 2순위: AI 개발 공통 규칙
+-- 3순위: 원본 개발 설계서
+-- 4순위: 이전 단계 완료 기록
+-- 5순위: 현재 코드와 테스트
+-- 6순위: 일반 Unity/C# 관례
+- 충돌이 발견되면 임의로 해결하지 말고 문제, 영향 범위 및 권장안을 먼저 보고한다.
+
+1. AI 역할
+- Unity 6 환경에서 태그 Trait 계약과 생명주기 호출을 구현한다.
+- 현재 단계에서는 ITagTrait, TraitContext, TagTraitSO 생명주기, TagActivate, TagAdd/TagSub의 Trait 연결을 구현한다.
+- 소멸 태그, 시간 처리, StackPolicy 실제 동작과 OnTagUpdated 발생은 구현하지 않는다.
+- Unity 컴파일과 Test Runner 실행은 사용자가 수행한다.
+
+2. 개발 환경
+- Unity 6.0 LTS (6000.0.68f1)
+- .NET Standard 2.1
+- Unity Test Framework 1.6.0
+- Runtime Assembly: TagTraitSystem.Runtime
+- EditMode Test Assembly: TagTraitSystem.Tests.EditMode
+- Windows PC 우선
+- IL2CPP 호환성 고려
+
+3. 이전 단계 전제
+- 단계 1의 TagTraitSO 최소 타입이 존재한다.
+- 단계 3의 TagAdd와 TagSub가 존재한다.
+- 단계 4의 TagChangeEventData, OnTagAdded, OnTagRemoved, OnTagUpdated, SafeInvoke 및 processingTagIDs가 존재한다.
+- 동일 TagID 가드는 이벤트 호출 종료까지 유지된다.
+- 단계 3의 임시 중복 TagAdd 정책을 유지한다.
+-- 동일 Definition 중복 TagAdd는 false
+-- 소멸 태그 영구 전환은 단계 7
+-- 영구 StackCount 중복 추가는 단계 10
+- 전제가 충족되지 않으면 구현을 시작하지 말고 누락 내용을 보고한다.
+
+4. 현재 단계 목표
+- TraitContext를 읽기 전용 값 형식으로 구현한다.
+- ITagTrait 계약을 구현한다.
+- TagTraitSO를 ITagTrait 기반 추상 클래스의 최종 기본 형태로 확장한다.
+- TagAdd 성공 과정에 Trait.OnAdd를 연결한다.
+- TagSub 성공 과정에 Trait.OnRemove를 연결한다.
+- TagActivate를 구현한다.
+- Trait 콜백 예외를 격리한다.
+- Trait 콜백이 끝날 때까지 동일 TagID 재진입 가드를 유지한다.
+- Trait 계약과 생명주기, 활성화 및 재진입 EditMode 테스트를 작성한다.
+
+5. 생성 및 수정 파일
+
+5.1. 생성
+- (Assets/TagTraitSystem/Runtime/Core/TraitContext.cs)
+- (Assets/TagTraitSystem/Runtime/Traits/ITagTrait.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/RecordingTagTraitSO.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TraitContextTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerTraitLifecycleTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagContainerActivationTests.cs)
+
+5.2. 수정
+- (Assets/TagTraitSystem/Runtime/Traits/TagTraitSO.cs)
+- (Assets/TagTraitSystem/Runtime/Components/TagContainer.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TestTagTraitSO.cs)
+
+5.3. 보존
+- 기존 단계 0~4 테스트를 삭제하거나 임의로 이동하지 않는다.
+- 기존 TagContainerEventTests와 TagContainerReentrancyTests의 기대값을 임의로 완화하지 않는다.
+- 테스트 공통 Factory를 현재 단계에서 조기 도입하지 않는다.
+
+6. TraitContext
+
+6.1. 선언
+- 네임스페이스:
+-- (TagTraitSystem.Runtime.Core)
+- 다음 형태로 구현한다.
+-- (public readonly struct TraitContext)
+
+6.2. 프로퍼티
+- 다음 public getter-only 프로퍼티를 구현한다.
+-- (public TagContainer Container { get; })
+-- (public GameObject Target { get; })
+-- (public GameObject Source { get; })
+-- (public TagDefinition Definition { get; })
+-- (public TagInstance Instance { get; })
+
+6.3. 생성자
+- internal 생성자로 구현한다.
+- 시그니처:
+-- (internal TraitContext(TagContainer container, GameObject target, GameObject source, TagDefinition definition, TagInstance instance))
+- 전달값을 그대로 저장한다.
+- 생성자에서 검증, 로그, 상태 변경을 수행하지 않는다.
+- public 생성자를 추가하지 않는다.
+
+6.4. 의미
+- Container: Trait을 실행한 TagContainer
+- Target: Container가 부착된 GameObject
+- Source: 공개 API에 전달된 GameObject 또는 Null
+- Definition: 실제 처리 대상 TagInstance.Definition
+- Instance: 실제 처리 중인 TagInstance
+- Target은 항상 container.gameObject를 사용한다.
+- Target을 source로 대체하지 않는다.
+- Source가 Null이면 Null을 유지한다.
+
+6.5. 문서화
+- public 타입과 public 프로퍼티에 영어 XML 문서 주석을 작성한다.
+- 오브젝트별 Runtime 상태가 TraitContext와 TagInstance에 있고 ScriptableObject Trait에는 저장되지 않음을 과장 없이 설명한다.
+
+7. ITagTrait
+
+7.1. 선언
+- 네임스페이스:
+-- (TagTraitSystem.Runtime.Traits)
+- public interface로 구현한다.
+
+7.2. 메서드
+- 정확한 시그니처:
+-- (void OnAdd(TraitContext context);)
+-- (void OnRemove(TraitContext context);)
+-- (bool OnActivate(TraitContext context);)
+- ref, in, out을 사용하지 않는다.
+- 비동기 반환형, Coroutine, IEnumerator를 사용하지 않는다.
+
+7.3. 의미
+- OnAdd: 태그가 Container에 처음 등록된 뒤 호출
+- OnRemove: 태그가 Container에서 완전히 제거되기 직전에 호출
+- OnActivate: 보유 중인 태그의 특징 알고리즘 실행
+
+8. TagTraitSO
+
+8.1. 선언
+- 다음 형태로 수정한다.
+-- (public abstract class TagTraitSO : ScriptableObject, ITagTrait)
+
+8.2. 메서드
+- 다음 기본 계약을 구현한다.
+-- (public virtual void OnAdd(TraitContext context))
+-- (public virtual void OnRemove(TraitContext context))
+-- (public abstract bool OnActivate(TraitContext context))
+- OnAdd와 OnRemove 기본 구현은 비어 있어야 한다.
+- OnActivate는 abstract로 두어 구체 Trait이 반드시 구현하도록 한다.
+
+8.3. 제한
+- CreateAssetMenu를 TagTraitSO에 추가하지 않는다.
+- Runtime 상태 필드를 추가하지 않는다.
+- 특정 TagContainer 또는 GameObject 참조를 에셋에 저장하지 않는다.
+- 구체 Trait 클래스가 필요에 따라 CreateAssetMenu를 선언하도록 둔다.
+
+9. Trait 호출 공통 규칙
+
+9.1. 정상 호출 대상
+- Keyword가 아닌 Definition이며 Trait이 존재할 때만 Trait 생명주기를 호출한다.
+- TagCategory.None은 일반 비Keyword 태그로 취급한다.
+- TraitContext.Definition은 항상 실제 Instance.Definition을 사용한다.
+- 요청 Definition과 실제 Instance.Definition 참조가 다르면 콜백을 호출하지 않는다.
+
+9.2. Keyword
+- 정상 Keyword는 Trait이 Null이며 생명주기 호출이 없다.
+- Keyword + Trait은 유효하지 않은 데이터이며 새 TagAdd에서 차단된다.
+- 비정상 Keyword + Trait이 이미 Container에 있는 경우 TagSub는 허용하지만 OnRemove를 호출하지 않는다.
+
+9.3. 비Keyword Trait Null
+- 새 TagAdd에서 차단한다.
+- 비정상 기존 데이터가 Container에 있으면 TagSub는 허용한다.
+- 호출할 Trait이 없으므로 OnRemove를 호출하지 않는다.
+
+10. Trait 콜백 안전 호출
+
+10.1. 권장 private helper
+- TagContainer에 Trait 콜백을 안전하게 호출하는 private helper를 만들 수 있다.
+- 예시 책임:
+-- SafeInvokeOnAdd
+-- SafeInvokeOnRemove
+-- SafeInvokeOnActivate
+- 정확한 private 메서드명은 현재 코드 응집도에 맞게 정할 수 있으나 public/internal API로 노출하지 않는다.
+
+10.2. OnAdd 예외
+- Error 로그
+- 예외 비전파
+- 추가된 태그 상태 유지
+- OnTagAdded 계속 발생
+- TagAdd는 true
+- 롤백하지 않음
+
+10.3. OnRemove 예외
+- Error 로그
+- 예외 비전파
+- 제거 계속 진행
+- OnTagRemoved 계속 발생
+- TagSub는 true
+- 태그를 Container에 남기지 않음
+
+10.4. OnActivate 예외
+- Error 로그
+- 예외 비전파
+- false 반환
+- 태그 상태 유지
+- 변경 이벤트 없음
+
+10.5. 로그
+- 로그 문구는 영어로 작성한다.
+- 직접 Debug.LogError 인접 위치에 다음 의미의 한글 주석을 작성한다.
+-- 개발 단계 12에서 TagDiagnostics로 교체한다.
+- Exception 객체 또는 핵심 메시지를 로그에 포함할 수 있다.
+- 예외를 다시 throw하지 않는다.
+
+11. TagAdd 생명주기
+
+11.1. 처리 순서
+- 단계 3 입력 검증
+- 동일 TagID 재진입 가드 획득
+- 영구 TagInstance 생성
+- TryAddInstance로 Dictionary 등록
+- 정상 비Keyword Trait이면 TraitContext 생성
+- Trait.OnAdd 안전 호출
+- OnTagAdded 안전 호출
+- finally에서 가드 해제
+- true 반환
+
+11.2. 상태 관찰
+- OnAdd가 호출될 때 태그는 이미 Container에 등록되어 있어야 한다.
+- OnAdd 내부 조회 결과:
+-- TagCheck true
+-- TryGetTag true와 같은 Instance
+-- TagScan에 Instance 포함
+- OnTagAdded는 OnAdd가 끝난 뒤 발생한다.
+
+11.3. 실패
+- 입력 검증 실패, 중복, Definition 불일치, 재진입 실패 시 OnAdd와 변경 이벤트가 모두 없어야 한다.
+- 단계 3의 임시 중복 정책을 유지한다.
+
+11.4. Keyword
+- 정상 Keyword + Null Trait의 TagAdd는 성공할 수 있다.
+- OnAdd는 호출하지 않는다.
+- OnTagAdded는 발생한다.
+
+12. TagSub 생명주기
+
+12.1. 처리 순서
+- 단계 3 입력 검증
+- 동일 TagID 재진입 가드 획득
+- 기존 Instance 조회
+- Definition 참조 검증
+- 제거 직전 Previous 값 보관
+- 정상 비Keyword Trait이면 TraitContext 생성
+- Trait.OnRemove 안전 호출
+- Dictionary 제거
+- OnTagRemoved 안전 호출
+- finally에서 가드 해제
+- true 반환
+
+12.2. 상태 관찰
+- OnRemove가 호출될 때 태그는 아직 Container에 존재해야 한다.
+- OnRemove 내부 조회 결과:
+-- TagCheck true
+-- TryGetTag true와 제거 대상 Instance
+- OnTagRemoved가 호출될 때는 이미 제거된 상태여야 한다.
+
+12.3. 비정상 데이터 제거
+- Keyword + Trait 기존 데이터:
+-- 제거 허용
+-- OnRemove 호출 금지
+-- 별도 Trait 불일치 Error 로그를 추가하지 않음
+-- OnTagRemoved 발생
+- 비Keyword + Trait Null 기존 데이터:
+-- 제거 허용
+-- OnRemove 없음
+-- 별도 Trait 불일치 Error 로그 없음
+-- OnTagRemoved 발생
+- 빈 이름 기존 데이터 제거 정책도 유지한다.
+
+12.4. 실패
+- 없는 태그, Definition 불일치, 동일 ID 재진입 실패 시 OnRemove와 변경 이벤트가 모두 없어야 한다.
+
+13. TagActivate
+
+13.1. 공개 시그니처
+- 다음 시그니처를 정확히 사용한다.
+-- (public bool TagActivate(TagDefinition definition, GameObject source = null))
+
+13.2. 입력 검증 순서
+- definition Null 검사
+- TagID.None 검사
+- TagName Null 또는 빈 문자열 검사
+- Keyword 여부 및 Trait 조합 검사
+- 비Keyword Trait Null 검사
+- 동일 TagID 재진입 가드 획득
+- 보유 Instance 조회
+- Instance.Definition과 요청 definition 참조 비교
+- TraitContext 생성
+- Trait.OnActivate 안전 호출
+- finally에서 가드 해제
+
+13.3. Null/None/빈 이름
+- Error 로그 후 false
+- Trait 호출 없음
+- 상태 변경 없음
+- 변경 이벤트 없음
+
+13.4. 정상 Keyword
+- Category == Keyword && Trait == Null
+- 로그 없이 false
+- Trait 호출 없음
+- 보유 여부와 관계없이 실행 대상이 아니다.
+
+13.5. 잘못된 Keyword
+- Category == Keyword && Trait != Null
+- Error 로그 후 false
+- 연결된 Trait 실행 금지
+- 상태 변경 및 이벤트 없음
+
+13.6. 비Keyword Trait Null
+- Error 로그 후 false
+- Trait 호출 없음
+- 상태 변경 및 이벤트 없음
+
+13.7. 보유 여부
+- 정상 비Keyword Definition이라도 Container가 보유하지 않으면 false
+- 로그 없음
+- Trait 호출 없음
+
+13.8. Definition 불일치
+- 같은 TagID를 보유하더라도 다른 TagDefinition 참조이면 데이터 오류이다.
+- Error 로그 후 false
+- Trait 호출 없음
+- 상태 변경 및 이벤트 없음
+
+13.9. 정상 실행
+- 실제 보유 Instance를 사용해 TraitContext를 생성한다.
+- Target = container.gameObject
+- Source = 전달값 그대로
+- Definition = instance.Definition
+- Instance = 실제 Instance
+- OnActivate 반환값을 그대로 TagActivate 반환값으로 사용한다.
+- true를 강제하지 않는다.
+
+13.10. 이벤트
+- TagActivate 자체는 OnTagAdded, OnTagRemoved, OnTagUpdated를 발생시키지 않는다.
+- Trait이 다른 TagID에 대해 별도 TagAdd/TagSub/TagActivate를 호출하면 해당 API의 독립 결과와 이벤트는 허용한다.
+
+14. 재진입 가드와 Trait
+
+14.1. 공통
+- 단계 4의 processingTagIDs를 그대로 사용한다.
+- Trait 콜백과 뒤따르는 이벤트 호출이 모두 끝날 때까지 해당 ID를 유지한다.
+- try-finally로 해제한다.
+
+14.2. 같은 ID 차단
+- OnAdd에서 같은 ID TagAdd
+- OnAdd에서 같은 ID TagSub
+- OnRemove에서 같은 ID TagAdd
+- OnRemove에서 같은 ID TagSub
+- OnActivate에서 같은 ID TagAdd
+- OnActivate에서 같은 ID TagSub
+- OnActivate에서 같은 ID TagActivate
+- 모두 false, 상태 변경 없음, 추가 이벤트 없음
+
+14.3. 다른 ID 허용
+- 다른 TagID의 TagAdd, TagSub, TagActivate 허용
+- 조회 API 허용
+- 교차 재진입으로 원래 처리 중인 ID를 다시 요청하면 차단
+
+14.4. 자기 소모
+- OnActivate 안에서 자신의 태그를 TagSub하는 패턴은 현재 재진입 정책에 따라 차단한다.
+- 자기 소비 전용 기능을 우회 구현하지 않는다.
+- 향후 필요 시 별도 명시적 API 또는 정책으로 설계한다.
+
+15. 기존 TestTagTraitSO 수정
+- TagTraitSO.OnActivate가 abstract가 되므로 기존 TestTagTraitSO를 최소 수정한다.
+- 다음 메서드를 구현한다.
+-- (public override bool OnActivate(TraitContext context))
+- 기본 반환값은 true로 한다.
+- 상태 기록, Action, 예외 설정 등은 TestTagTraitSO에 추가하지 않는다.
+- 기존 단계 테스트 호환을 위한 최소 concrete 타입으로 유지한다.
+
+16. RecordingTagTraitSO
+
+16.1. 위치
+- Test Assembly에만 생성한다.
+- Runtime Assembly에 포함하지 않는다.
+
+16.2. 권장 기능
+- OnAddCallCount
+- OnRemoveCallCount
+- OnActivateCallCount
+- LastOnAddContext
+- LastOnRemoveContext
+- LastOnActivateContext
+- ActivateResult 설정
+- OnAddAction
+- OnRemoveAction
+- OnActivateAction
+- ThrowOnAdd
+- ThrowOnRemove
+- ThrowOnActivate
+
+16.3. 제한
+- 테스트에 필요한 범위만 구현한다.
+- 프로젝트 에셋 생성용 CreateAssetMenu를 추가하지 않는다.
+- Runtime 시스템의 공개 계약을 바꾸기 위한 기능을 넣지 않는다.
+
+17. TraitContextTests
+- TraitContext_WhenCreated_PreservesAllValues
+- TraitContext_Target_IsContainerGameObject
+- TraitContext_WhenSourceIsNull_PreservesNull
+- TraitContext_WhenSourceIsSpecified_PreservesSource
+- internal 생성자 접근은 기존 InternalsVisibleTo를 사용한다.
+
+18. TagContainerTraitLifecycleTests
+
+18.1. OnAdd
+- OnAdd_WhenNonKeywordTagIsAdded_InvokesOnce
+- OnAdd_WhenInvoked_ReceivesExpectedContext
+- OnAdd_WhenInvoked_TagIsAlreadyStored
+- TagAdd_WhenTraitExists_InvokesOnAddBeforeOnTagAdded
+- TagAdd_WhenKeywordTagIsAdded_DoesNotInvokeOnAdd
+- TagAdd_WhenFails_DoesNotInvokeOnAdd
+- OnAdd_WhenSameIDMutationIsRequested_BlocksReentrancy
+- OnAdd_WhenDifferentIDMutationIsRequested_AllowsOperation
+- TagAdd_WhenOnAddThrows_KeepsTagInvokesEventAndReturnsTrue
+
+18.2. OnRemove
+- OnRemove_WhenNonKeywordTagIsRemoved_InvokesOnce
+- OnRemove_WhenInvoked_ReceivesExpectedContext
+- OnRemove_WhenInvoked_TagIsStillStored
+- TagSub_InvokesOnRemoveBeforeOnTagRemoved
+- TagSub_WhenInvalidKeywordTraitTagExists_DoesNotInvokeOnRemove
+- TagSub_WhenNonKeywordNullTraitTagExists_DoesNotInvokeOnRemove
+- TagSub_WhenFails_DoesNotInvokeOnRemove
+- OnRemove_WhenSameIDMutationIsRequested_BlocksReentrancy
+- OnRemove_WhenDifferentIDMutationIsRequested_AllowsOperation
+- TagSub_WhenOnRemoveThrows_RemovesTagInvokesEventAndReturnsTrue
+
+18.3. 순서 검증
+- 문자열 목록 또는 정수 순서 기록으로 다음을 확인한다.
+-- TagAdd: stored state 확인 → OnAdd → OnTagAdded
+-- TagSub: OnRemove → removed state 확인 → OnTagRemoved
+- 이벤트 구독 순서 자체를 공개 계약으로 테스트하지 않는다.
+
+18.4. 예외 로그
+- OnAdd/OnRemove 예외는 LogAssert로 Error 로그를 검증한다.
+- 로그 전체 문자열에 과도하게 결합하지 않는다.
+- 예외 이후 가드가 해제되어 같은 ID의 다음 정상 API가 가능해야 한다.
+
+19. TagContainerActivationTests
+
+19.1. 정상 실행
+- TagActivate_WhenHeldNonKeywordTraitReturnsTrue_ReturnsTrue
+- TagActivate_WhenHeldNonKeywordTraitReturnsFalse_ReturnsFalse
+- TagActivate_WhenInvoked_ReceivesExpectedContext
+- TagActivate_WhenSourceIsNull_PreservesNullSource
+- TagActivate_WhenSourceIsSpecified_PreservesSource
+- TagActivate_WhenInvoked_DoesNotRaiseChangeEvents
+
+19.2. 실패 및 오류
+- TagActivate_WhenDefinitionIsNull_ReturnsFalseAndLogsError
+- TagActivate_WhenTagIDIsNone_ReturnsFalseAndLogsError
+- TagActivate_WhenTagNameIsEmpty_ReturnsFalseAndLogsError
+- TagActivate_WhenTagIsNotHeld_ReturnsFalseWithoutLog
+- TagActivate_WhenKeywordHasNoTrait_ReturnsFalseWithoutLog
+- TagActivate_WhenKeywordHasTrait_ReturnsFalseLogsErrorAndDoesNotInvokeTrait
+- TagActivate_WhenNonKeywordTraitIsNull_ReturnsFalseAndLogsError
+- TagActivate_WhenDifferentDefinitionHasSameID_ReturnsFalseAndLogsError
+- TagActivate_WhenTraitThrows_ReturnsFalseLogsErrorAndKeepsState
+
+19.3. 재진입
+- OnActivate_WhenSameIDTagAddIsRequested_Blocks
+- OnActivate_WhenSameIDTagSubIsRequested_Blocks
+- OnActivate_WhenSameIDTagActivateIsRequested_Blocks
+- OnActivate_WhenDifferentIDMutationIsRequested_AllowsOperation
+- OnActivate_WhenDifferentIDActivationIsRequested_AllowsOperation
+- OnActivate_WhenCallbackQueriesContainer_ReturnsCurrentState
+- TagActivate_WhenTraitThrows_DoesNotLeaveGuardLocked
+
+20. 기존 이벤트 테스트 회귀
+- TagAdd 성공 시 OnAdd가 추가되었지만 OnTagAdded의 데이터와 발생 횟수는 유지한다.
+- TagSub 성공 시 OnRemove가 추가되었지만 OnTagRemoved의 데이터와 발생 횟수는 유지한다.
+- 구독자 예외 격리 정책을 유지한다.
+- OnTagUpdated는 계속 미발생이다.
+
+21. 코딩 규칙
+- private 필드는 접두어 없는 camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- 필요한 기능 단위에만 #region
+- Nullable Reference Type 도입 금지
+- 불필요한 LINQ 금지
+
+22. 현재 단계 비범위
+- 소멸 태그
+- PerishableTagAdd
+- 시간 정규화
+- Tick/Update
+- Refresh
+- MaxDuration
+- StackCount 실제 처리
+- 소멸 태그 영구 전환
+- OnTagUpdated 발생
+- 여러 Trait 연결
+- Trait 우선순위
+- 비동기/Coroutine Trait
+- 자기 태그 소비 전용 기능
+- Editor Validator
+- TagDiagnostics
+- PlayMode 테스트
+- Sample
+
+23. 금지 사항
+- TraitContext.Target을 Source로 대체하지 않는다.
+- ScriptableObject Trait에 오브젝트별 Runtime 상태를 저장하지 않는다.
+- Keyword Trait을 실행하지 않는다.
+- 비정상 Keyword 기존 데이터 제거 시 OnRemove를 호출하지 않는다.
+- OnAdd를 Dictionary 등록 전에 호출하지 않는다.
+- OnRemove를 Dictionary 제거 후 호출하지 않는다.
+- Trait 예외를 재던지지 않는다.
+- OnAdd/OnRemove 예외로 TagAdd/TagSub를 false 처리하지 않는다.
+- OnActivate 예외로 상태를 변경하지 않는다.
+- TagActivate 자체 이벤트를 발생시키지 않는다.
+- Trait 콜백 전에 동일 ID 가드를 해제하지 않는다.
+- 단계 3 중복 정책을 변경하지 않는다.
+- 미실행 테스트 또는 미확인 컴파일을 성공으로 보고하지 않는다.
+
+24. 작업 절차
+- 단계 4 완료 상태 확인
+- TraitContext 작성
+- ITagTrait 작성
+- TagTraitSO 수정
+- TestTagTraitSO 최소 수정
+- RecordingTagTraitSO 작성
+- TagContainer Trait 안전 호출 helper 작성
+- TagAdd에 OnAdd 연결
+- TagSub에 OnRemove 연결
+- TagActivate 구현
+- TraitContext 테스트 작성
+- 생명주기 테스트 작성
+- 활성화 테스트 작성
+- 기존 이벤트/재진입 테스트 정적 회귀 검토
+- 범위 초과 확인
+- Unity 검증 미실행 명시
+- 사용자 검증 절차 보고
+
+25. 작업 중단 조건
+- 기존 TagTraitSO 상속 타입 때문에 abstract OnActivate 추가가 파괴적 충돌을 만드는 경우
+- TraitContext 추가를 위해 공개 API를 변경해야 하는 경우
+- 기존 이벤트 순서와 확정 생명주기 순서가 충돌하는 경우
+- 단계 4 재진입 가드를 Trait까지 확장할 수 없는 경우
+- 현재 단계 밖 시간 또는 StackPolicy 코드가 선행되어야 하는 경우
+- 기존 테스트와 확정 정책이 충돌하는 경우
+- 위 경우 문제, 선택지, 권장안 및 영향 범위를 보고한다.
+
+26. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 5 - Trait 계약, 생명주기와 TagActivate
+
+(생성한 파일)
+- 경로 목록
+
+(수정한 파일)
+- 경로와 이유
+
+(구현한 공개 API)
+- ITagTrait
+- TraitContext 공개 프로퍼티
+- TagTraitSO 생명주기
+- TagActivate
+
+(Trait 호출 순서)
+- TagAdd
+- TagSub
+- TagActivate
+
+(예외 정책)
+- OnAdd
+- OnRemove
+- OnActivate
+
+(재진입 정책)
+- 같은 ID
+- 다른 ID
+- 자기 소비 제한
+
+(작성한 테스트)
+- TraitContext
+- 생명주기
+- 활성화
+- 예외 및 재진입
+
+(기존 정책 인계)
+- 단계 7 소멸 태그 영구 전환
+- 단계 10 영구 StackCount
+- OnTagUpdated 미발생
+
+(정적 검토)
+- Target/Source 의미
+- Keyword 처리
+- 비정상 데이터 제거
+- 이벤트 순서
+- 가드 finally 해제
+- 범위 초과 여부
+
+(Unity 사용자 확인 필요)
+- Unity 컴파일
+- 단계 0~4 회귀 테스트
+- 단계 5 테스트
+- LogAssert
+- 생명주기 순서
+- Trait 예외 이후 후속 API
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(설계 변경)
+- 없음 또는 상세
+
+(남은 문제)
+- 없음 또는 상세
+
+(다음 단계)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 6 진행 가능

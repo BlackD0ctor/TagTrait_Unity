@@ -1,0 +1,373 @@
+유니티 TagTrait 시스템 개발 단계 12-2 구현 프롬프트
+
+0. 문서 식별
+- 개발 단계: 12-2
+- 원래 개발 단계: 12
+- 단계 제목: Editor TagDefinition Validator
+- 프롬프트 종류: 구현 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 12-1 구현 및 검수 프롬프트
+-- 개발 단계 0~12-1 완료 기록
+- 현재 단계는 12-1 사용자 검증 통과 후 진행한다.
+
+1. 현재 단계 목표
+- Editor Assembly를 구성한다.
+- 프로젝트 전체 TagDefinition 에셋을 수동으로 검사하는 Validator를 구현한다.
+- 개별 Definition 오류, 중복 TagID, 중복 이름을 보고한다.
+- Validator 핵심 로직과 AssetDatabase 검색을 분리해 테스트 가능하게 만든다.
+- 문제를 자동 수정하지 않는다.
+- 메뉴에서 사용자가 수동 실행할 수 있게 한다.
+
+2. 생성 및 수정 파일
+
+2.1. 생성
+- (Assets/TagTraitSystem/Editor/TagTraitSystem.Editor.asmdef)
+- (Assets/TagTraitSystem/Editor/AssemblyInfo.cs)
+- (Assets/TagTraitSystem/Editor/Validation/TagDefinitionValidator.cs)
+- (Assets/TagTraitSystem/Editor/Validation/TagDefinitionValidationMenu.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagDefinitionValidatorTests.cs)
+
+2.2. 조건부 수정
+- (Assets/TagTraitSystem/Tests/EditMode/TagTraitSystem.Tests.EditMode.asmdef)
+-- TagTraitSystem.Editor 참조가 필요하면 추가한다.
+-- 기존 Runtime 참조와 Editor 플랫폼 설정을 유지한다.
+
+2.3. 수정 금지
+- Runtime Assembly가 Editor를 참조하도록 변경
+- Runtime TagDefinition API
+- Package 파일
+- 실제 TagDefinition 에셋 자동 생성
+- OnValidate
+- AssetPostprocessor
+
+3. Editor Assembly
+- 이름:
+-- TagTraitSystem.Editor
+- references:
+-- TagTraitSystem.Runtime
+- includePlatforms:
+-- Editor
+- Runtime Assembly가 Editor Assembly를 참조하지 않는다.
+- Root Namespace는 기존 프로젝트 네임스페이스 규칙과 맞춘다.
+- Test Assembly가 Editor Validator internal 타입을 테스트할 수 있도록 Editor Assembly를 참조한다.
+
+4. InternalsVisibleTo
+- Editor/AssemblyInfo.cs에 다음을 추가한다.
+-- [assembly: InternalsVisibleTo("TagTraitSystem.Tests.EditMode")]
+- 필요한 using을 명시한다.
+- 다른 Assembly 접근을 임의로 허용하지 않는다.
+- strong-name public key를 추가하지 않는다.
+
+5. 파일 및 네임스페이스
+- Editor Validator:
+-- TagTraitSystem.Editor.Validation
+- 메뉴:
+-- TagTraitSystem.Editor.Validation
+- 테스트:
+-- TagTraitSystem.Tests.EditMode
+- Runtime 네임스페이스와 중복되는 Editor 타입을 만들지 않는다.
+
+6. Validator 실행 방식
+- 메뉴 경로:
+-- Tools/TagTraitSystem/Validate Tag Definitions
+- 수동 실행만 지원한다.
+- 실행 순서:
+-- AssetDatabase.FindAssets("t:TagDefinition")
+-- GUID를 Asset Path로 변환
+-- Asset Path를 StringComparer.Ordinal 기준 정렬
+-- TagDefinition 로드
+-- AssetRecord 목록 생성
+-- 순수 검증 로직 호출
+-- Issue 출력
+-- 요약 출력
+- Console을 자동으로 지우지 않는다.
+
+7. 현재 단계에서 자동 실행하지 않음
+- OnValidate
+- AssetPostprocessor
+- Domain Reload
+- Scene 저장
+- 에셋 저장
+- 빌드 전 검사
+- PlayMode 진입
+- 자동 실행이 필요하면 별도 단계에서 설계한다.
+
+8. 내부 결과 타입
+- 다음 의미의 internal 타입을 구현한다.
+-- internal enum TagValidationSeverity
+--- Warning
+--- Error
+-- internal readonly struct TagDefinitionAssetRecord
+--- TagDefinition Definition
+--- string AssetPath
+-- internal readonly struct TagValidationIssue
+--- TagValidationSeverity Severity
+--- TagDefinition Definition
+--- string AssetPath
+--- string Message
+- 필드 또는 getter-only 프로퍼티를 사용한다.
+- public API로 노출하지 않는다.
+- Runtime Assembly에 두지 않는다.
+
+9. 순수 검증 API
+- 다음 의미의 internal static 메서드를 제공한다.
+-- internal static IReadOnlyList<TagValidationIssue> Validate(IReadOnlyList<TagDefinitionAssetRecord> records)
+- AssetDatabase를 호출하지 않는다.
+- 입력 records를 변경하지 않는다.
+- Definition 에셋 값을 변경하지 않는다.
+- 결정적 결과 순서를 보장한다.
+- 결과는 AssetPath Ordinal 순서와 검사 규칙 순서를 기반으로 정렬한다.
+
+10. 개별 Definition Error
+- Definition == null
+-- Error
+-- AssetPath 포함
+- TagID == None
+-- Error
+- TagName == null 또는 string.Empty
+-- Error
+- Category == Keyword && Trait != null
+-- Error
+- Category != Keyword && Trait == null
+-- Error
+- StackPolicy == StackCount && MaxStackCount < 1
+-- Error
+- MaxStackCount == 1은 유효하다.
+- StackCount가 아닌 정책의 MaxStackCount 값은 검사하지 않는다.
+
+11. 이름 유효성
+- 공백만 있는 TagName은 허용한다.
+- 앞뒤 공백은 허용한다.
+- 이름을 Trim하지 않는다.
+- 대소문자를 변경하지 않는다.
+- null과 string.Empty만 개별 Error로 처리한다.
+- 공백 문자열의 중복은 Warning 대상이 될 수 있다.
+
+12. 프로젝트 전체 중복 ID
+- TagID.None은 중복 ID 그룹 검사에서 제외한다.
+- 같은 non-None TagID를 사용하는 Definition이 둘 이상이면 Error이다.
+- 충돌 에셋마다 한 Issue를 생성한다.
+- 각 Issue 메시지에는:
+-- TagID
+-- 현재 AssetPath
+-- 충돌한 다른 모든 AssetPath
+를 포함한다.
+- 현재 Definition을 Issue Context로 사용한다.
+- 중복 그룹의 경로 목록은 Ordinal 정렬한다.
+- 에셋 수를 자동으로 줄이거나 ID를 변경하지 않는다.
+
+13. 프로젝트 전체 중복 이름
+- null과 string.Empty는 중복 이름 검사에서 제외한다.
+- 정확히 같은 문자열을 가진 Definition이 둘 이상이면 Warning이다.
+- 비교:
+-- StringComparer.Ordinal
+-- 대소문자 구분
+-- 앞뒤 공백 구분
+- 공백만 있는 동일 문자열은 Warning 대상이다.
+- 충돌 에셋마다 한 Issue를 생성한다.
+- 메시지에 현재 경로와 다른 충돌 경로를 포함한다.
+
+14. Issue 출력
+- Error:
+-- TagDiagnostics.LogError(issue.Message, issue.Definition)
+- Warning:
+-- TagDiagnostics.LogWarning(issue.Message, issue.Definition)
+- TagDiagnostics가 접두어를 추가하므로 Validator 메시지에 접두어를 넣지 않는다.
+- Warning은 Editor에서 출력된다.
+- Context가 null이면 null 전달을 허용한다.
+
+15. 요약 출력
+- 모든 Issue 출력 후 한 번:
+-- TagDiagnostics.Log("TagDefinition validation completed: X errors, Y warnings.")
+- 문제가 없어도 0 errors, 0 warnings 요약을 출력한다.
+- Issue 개수는 실제 생성한 Issue 수 기준이다.
+- 충돌 그룹 수가 아니라 에셋별 Issue 수를 센다.
+
+16. 자동 수정 금지
+- ID 변경
+- 이름 Trim
+- Trait 제거 또는 생성
+- MaxStackCount 변경
+- 중복 에셋 삭제
+- SerializedObject 변경
+- SetDirty
+- SaveAssets
+- Undo 등록
+- 에셋 Import
+- Validator는 보고만 한다.
+
+17. 결정적 순서
+- AssetDatabase 검색 결과를 그대로 사용하지 않는다.
+- AssetPath를 StringComparer.Ordinal로 정렬한다.
+- 개별 Error는 고정된 검사 순서로 생성한다.
+- 중복 ID 그룹은 TagID 숫자값 기준 정렬하거나 경로 기준으로 결정성을 확보한다.
+- 중복 이름 그룹은 이름 Ordinal과 경로 Ordinal로 결정성을 확보한다.
+- 테스트가 Dictionary 순회 순서에 의존하지 않도록 한다.
+
+18. 로그 메시지
+- 영어로 작성한다.
+- 문제 유형, 값, AssetPath를 포함한다.
+- 예:
+-- TagDefinition at 'Assets/Tags/A.asset' uses TagID.None.
+-- TagID 'TestAlpha' is duplicated by: Assets/Tags/A.asset, Assets/Tags/B.asset.
+-- TagName 'Poison' is duplicated by: Assets/Tags/A.asset, Assets/Tags/C.asset.
+- 긴 메시지라도 충돌 경로를 생략하지 않는다.
+
+19. 테스트 데이터 생성
+- 순수 Validate 테스트에서는 ScriptableObject.CreateInstance<TagDefinition>()을 사용한다.
+- SerializedObject로 private 필드를 설정한다.
+- 실제 프로젝트 에셋 파일을 만들지 않는다.
+- TagDefinitionAssetRecord에 가상 AssetPath를 전달한다.
+- TearDown에서 Object.DestroyImmediate로 정리한다.
+- 메뉴/AssetDatabase 어댑터는 최소 정적 검토와 별도 단위 테스트로 검증한다.
+
+20. 필수 테스트 - 개별 Error
+- Validate_WhenDefinitionIsNull_ReturnsError
+- Validate_WhenTagIDIsNone_ReturnsError
+- Validate_WhenTagNameIsNull_ReturnsError
+- Validate_WhenTagNameIsEmpty_ReturnsError
+- Validate_WhenTagNameIsWhitespace_DoesNotReturnNameError
+- Validate_WhenNameHasLeadingOrTrailingWhitespace_DoesNotReturnNameError
+- Validate_WhenKeywordHasTrait_ReturnsError
+- Validate_WhenNonKeywordHasNoTrait_ReturnsError
+- Validate_WhenStackMaximumIsBelowOne_ReturnsError
+- Validate_WhenStackMaximumIsOne_DoesNotReturnMaximumError
+- Validate_WhenNonStackPolicyHasInvalidMaximum_DoesNotReturnMaximumError
+
+21. 필수 테스트 - 중복 ID
+- Validate_WhenNonNoneTagIDIsDuplicated_ReturnsErrorForEachAsset
+- Validate_WhenThreeAssetsShareID_ReturnsThreeIssues
+- Validate_WhenTagIDNoneRepeats_DoesNotAddDuplicateIDIssue
+- DuplicateIDIssue_IncludesAllConflictingPaths
+- DuplicateIDIssue_UsesEachDefinitionAsContext
+- DuplicateIDIssues_AreDeterministicallyOrdered
+
+22. 필수 테스트 - 중복 이름
+- Validate_WhenNameIsDuplicated_ReturnsWarningForEachAsset
+- Validate_WhenNamesDifferByCase_DoesNotReturnDuplicateWarning
+- Validate_WhenNamesDifferByWhitespace_DoesNotReturnDuplicateWarning
+- Validate_WhenWhitespaceOnlyNamesMatch_ReturnsWarning
+- Validate_WhenEmptyNamesRepeat_DoesNotAddDuplicateNameWarning
+- DuplicateNameIssue_IncludesAllConflictingPaths
+- DuplicateNameIssues_AreDeterministicallyOrdered
+
+23. 필수 테스트 - 무변경 및 결과
+- Validate_DoesNotModifyDefinitions
+- Validate_DoesNotModifyInputRecords
+- Validate_WhenNoIssues_ReturnsEmptyList
+- ValidationMenu_WhenNoIssues_LogsZeroSummary
+- ValidationMenu_WhenIssuesExist_LogsEachIssueAndSummary
+- Summary_CountsPerAssetIssues
+- ValidationResult_OrderIsStableForUnsortedInput
+
+24. Editor 메뉴 검수 테스트
+- MenuItem 경로를 정적으로 확인한다.
+- Runtime 코드에서 UnityEditor 참조가 없는지 확인한다.
+- Test Assembly가 Editor Assembly를 참조하는지 확인한다.
+- 실제 AssetDatabase 전체 검색 테스트는 프로젝트 에셋 상태에 의존하지 않도록 최소화한다.
+
+25. 코드 스타일
+- private camelCase
+- BSD 중괄호
+- var 금지
+- XML 문서 주석 영어
+- 일반 코드 주석 한글
+- 로그 영어
+- 테스트 이름 영어
+- NRT 미도입
+- 불필요한 LINQ 및 할당 금지
+- Editor 코드가 Runtime Assembly로 유출되지 않게 한다.
+
+26. 현재 단계 비범위
+- 자동 수정
+- OnValidate
+- AssetPostprocessor
+- 빌드 전 검사
+- Custom Inspector
+- PropertyDrawer
+- ID 생성기
+- ID 재배정 도구
+- 저장 데이터 마이그레이션
+- Scene Validator
+- Runtime 전체 Container Validator
+- StackCount Tick 구조 재설계
+- ExclusiveGroup/Priority/IsSaveable 실제 검증
+
+27. 금지 사항
+- Runtime Assembly가 Editor를 참조하게 하지 않는다.
+- 실제 에셋을 테스트 중 생성하거나 삭제하지 않는다.
+- 이름을 Trim하거나 대소문자를 정규화하지 않는다.
+- 중복 ID를 그룹당 한 Issue만 생성하지 않는다.
+- 문제를 자동 수정하지 않는다.
+- Console을 자동으로 지우지 않는다.
+- Validator 실행을 자동화하지 않는다.
+- 실행하지 않은 테스트를 성공으로 보고하지 않는다.
+
+28. 작업 절차
+- 12-1 완료 상태 확인
+- Editor Assembly 생성
+- InternalsVisibleTo 설정
+- Test Assembly 참조 확인
+- 내부 결과 타입 구현
+- 순수 Validate 구현
+- 개별 Error 구현
+- 중복 ID 구현
+- 중복 이름 구현
+- 메뉴 및 AssetDatabase 어댑터 구현
+- Issue 및 요약 로그 구현
+- 무변경 확인
+- 테스트 작성
+- Runtime/Editor 참조 방향 정적 검토
+- Unity 검증 미실행 상태 보고
+
+29. 완료 보고 형식
+
+(완료한 개발 단계)
+- 개발 단계 12-2 - Editor TagDefinition Validator
+
+(생성한 파일)
+(수정한 파일)
+
+(Editor Assembly)
+- 이름
+- 참조
+- 플랫폼
+- InternalsVisibleTo
+
+(Validator API)
+- Record
+- Issue
+- Severity
+- Validate
+
+(개별 검사)
+- Error 목록
+- 허용 항목
+
+(중복 검사)
+- ID
+- 이름
+- 비교 방식
+- Issue 단위
+
+(메뉴 실행)
+- 메뉴 경로
+- AssetDatabase 검색
+- 결정적 정렬
+- 요약
+
+(자동 수정 금지)
+- 확인 결과
+
+(작성한 테스트)
+(정적 검토)
+
+(검증 상태)
+- Unity compilation not verified.
+- Test code written, not executed.
+- Manual Unity verification required.
+
+(다음 단계 진행 가능 여부)
+- 사용자 검증 전: 대기
+- 검증 통과 후: 개발 단계 13 진행 가능

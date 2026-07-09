@@ -1,0 +1,427 @@
+유니티 TagTrait 시스템 개발 단계 1 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 1
+- 단계 제목: Enum과 데이터 구조
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_개발_설계서(설계안).txt)
+-- (Assets/TagTraitSystem/Documents/유니티_TagTrait_시스템_AI_개발_공통_규칙.txt)
+-- 개발 단계 0 완료 기록
+-- 개발 단계 1 구현 프롬프트
+-- 개발 단계 1 구현 결과 보고
+- 본 프롬프트에서는 새로운 기능을 구현하지 않는다.
+- 검수 중 수정이 필요하면 즉시 수정하기보다 문제, 심각도, 수정 범위 및 영향부터 보고한다.
+
+1. 검수 목적
+- 개발 단계 1의 변경 사항이 Enum과 데이터 구조 범위에만 머물렀는지 확인한다.
+- enum 숫자값과 공개 API가 확정 기준과 일치하는지 확인한다.
+- TagDefinition과 TagInstance의 책임이 분리되어 있는지 확인한다.
+- MaxStackCount가 TagDefinition의 원본 설정으로만 추가되었는지 확인한다.
+- TagTraitSO가 최소 기반 타입에 머물렀는지 확인한다.
+- 테스트가 단계 1 요구사항과 경계를 정확히 검증하는지 확인한다.
+- 단계 2 이후 기능이 조기 구현되지 않았는지 확인한다.
+- Unity에서 실제 확인하지 않은 결과를 성공으로 보고하지 않았는지 확인한다.
+
+2. 검수 대상
+- (Assets/TagTraitSystem/Runtime/Core/TagID.cs)
+- (Assets/TagTraitSystem/Runtime/Core/TagCategory.cs)
+- (Assets/TagTraitSystem/Runtime/Core/StackPolicy.cs)
+- (Assets/TagTraitSystem/Runtime/Core/TagChangeReason.cs)
+- (Assets/TagTraitSystem/Runtime/Core/ExclusiveGroup.cs)
+- (Assets/TagTraitSystem/Runtime/Core/TagInstance.cs)
+- (Assets/TagTraitSystem/Runtime/Definitions/TagDefinition.cs)
+- (Assets/TagTraitSystem/Runtime/Traits/TagTraitSO.cs)
+- (Assets/TagTraitSystem/Runtime/AssemblyInfo.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/EnumDefinitionTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagDefinitionTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TagInstanceTests.cs)
+- (Assets/TagTraitSystem/Tests/EditMode/TestTagTraitSO.cs)
+- 단계 1에서 생성 또는 수정된 모든 파일
+- 단계 1 구현 결과 보고
+
+3. 폴더 및 네임스페이스 검수
+- Core 타입이 (TagTraitSystem.Runtime.Core)에 있는지 확인한다.
+- TagDefinition이 (TagTraitSystem.Runtime.Definitions)에 있는지 확인한다.
+- TagTraitSO가 (TagTraitSystem.Runtime.Traits)에 있는지 확인한다.
+- 테스트 코드가 (TagTraitSystem.Tests.EditMode)에 있는지 확인한다.
+- 불필요하게 더 깊은 네임스페이스가 만들어지지 않았는지 확인한다.
+- 동일 타입이 다른 네임스페이스나 경로에 중복 생성되지 않았는지 확인한다.
+
+4. Enum 검수
+
+4.1. TagID
+- public enum인지 확인한다.
+- 다음 값이 정확한지 확인한다.
+-- None = 0
+-- TestAlpha = 1
+-- TestBeta = 2
+-- TestGamma = 3
+- 테스트용 임시 ID 주석이 있는지 확인한다.
+- 추가 실제 태그 ID가 임의로 포함되지 않았는지 확인한다.
+- 중복 숫자값이 없는지 확인한다.
+
+4.2. TagCategory
+- 다음 값이 정확한지 확인한다.
+-- None = 0
+-- Keyword = 1
+-- Status = 2
+- 추가 카테고리가 임의로 포함되지 않았는지 확인한다.
+
+4.3. StackPolicy
+- 다음 값이 정확한지 확인한다.
+-- None = 0
+-- MaxDuration = 1
+-- Refresh = 2
+-- StackCount = 3
+- Extend가 조기 추가되지 않았는지 확인한다.
+
+4.4. TagChangeReason
+- 다음 값이 정확한지 확인한다.
+-- Added = 0
+-- Removed = 1
+-- DurationRefreshed = 2
+-- DurationExtendedToMax = 3
+-- StackIncreased = 4
+-- StackDecreased = 5
+-- ChangedToPermanent = 6
+-- Expired = 7
+
+4.5. ExclusiveGroup
+- None = 0만 존재하는지 확인한다.
+- enum 숫자값이 우선순위 의미로 사용되지 않았는지 확인한다.
+
+5. TagTraitSO 검수
+- public abstract class인지 확인한다.
+- ScriptableObject를 상속하는지 확인한다.
+- ITagTrait을 구현하지 않았는지 확인한다.
+- OnAdd, OnActivate, OnRemove가 없는지 확인한다.
+- CreateAssetMenu가 없는지 확인한다.
+- Runtime 상태 필드가 없는지 확인한다.
+- 영어 XML 문서 주석이 구현 범위를 과장하지 않는지 확인한다.
+
+6. TagDefinition 검수
+
+6.1. 클래스 및 CreateAssetMenu
+- public sealed class인지 확인한다.
+- ScriptableObject를 상속하는지 확인한다.
+- CreateAssetMenu 값이 다음과 같은지 확인한다.
+-- fileName = NewTagDefinition
+-- menuName = TagTraitSystem/Tag Definition
+-- order = 0
+
+6.2. 필드
+- 다음 private 직렬화 필드가 정확히 존재하는지 확인한다.
+-- tagID
+-- tagName
+-- category
+-- trait
+-- stackPolicy
+-- maxStackCount
+-- exclusiveGroup
+-- priority
+-- isSaveable
+- tagName 기본값이 string.Empty인지 확인한다.
+- maxStackCount 기본값이 1인지 확인한다.
+- 별도 접두어 없는 camelCase인지 확인한다.
+- Runtime 상태 필드가 추가되지 않았는지 확인한다.
+-- Duration
+-- RemainingTime
+-- StackCount
+-- IsPerishable
+- MaxStackCount를 TagInstance Runtime 필드로 복제하지 않았는지 확인한다.
+
+6.3. 프로퍼티
+- 다음 읽기 전용 프로퍼티가 정확히 존재하는지 확인한다.
+-- TagID
+-- TagName
+-- Category
+-- Trait
+-- StackPolicy
+-- MaxStackCount
+-- ExclusiveGroup
+-- Priority
+-- IsSaveable
+-- IsKeywordTag
+- public setter가 없는지 확인한다.
+- MaxStackCount가 maxStackCount를 그대로 반환하는지 확인한다.
+- MaxStackCount를 오브젝트별 또는 Runtime 값으로 계산하지 않는지 확인한다.
+- IsKeywordTag가 Category == TagCategory.Keyword만 확인하는지 검수한다.
+- Trait Null 여부가 키워드 판정에 사용되지 않았는지 확인한다.
+
+6.4. 범위 제한
+- IsValid 또는 Validate가 추가되지 않았는지 확인한다.
+- OnValidate가 구현되지 않았는지 확인한다.
+- 중복 ID 검색이 구현되지 않았는지 확인한다.
+- Keyword-Trait 조합 차단이 아직 Runtime 코드에 들어가지 않았는지 확인한다.
+- 비Keyword Trait Null 차단이 아직 구현되지 않았는지 확인한다.
+- MaxStackCount < 1 검증이나 자동 보정이 조기 구현되지 않았는지 확인한다.
+- MaxStackCount == 1을 오류로 취급하지 않았는지 확인한다.
+- 최대 스택 도달 처리와 오브젝트별 최대치 override가 조기 구현되지 않았는지 확인한다.
+
+7. TagInstance 검수
+
+7.1. 클래스
+- public sealed class인지 확인한다.
+- MonoBehaviour, ScriptableObject 또는 struct가 아닌 일반 참조형 클래스인지 확인한다.
+
+7.2. 프로퍼티
+- 다음 프로퍼티가 존재하는지 확인한다.
+-- Definition
+-- Duration
+-- RemainingTime
+-- StackCount
+-- IsPerishable
+- TagInstance에 MaxStackCount 프로퍼티나 별도 저장 필드가 없는지 확인한다.
+- Definition은 getter only인지 확인한다.
+- 나머지 상태 프로퍼티의 setter가 private인지 확인한다.
+- public setter나 외부 상태 변경 API가 없는지 확인한다.
+
+7.3. 영구 생성자
+- internal TagInstance(TagDefinition definition)인지 확인한다.
+- Null Definition에서 ArgumentNullException을 발생시키는지 확인한다.
+- 정상 초기값이 다음과 같은지 확인한다.
+-- Duration 0f
+-- RemainingTime 0f
+-- StackCount 1
+-- IsPerishable false
+
+7.4. 소멸 생성자
+- internal TagInstance(TagDefinition definition, float duration)인지 확인한다.
+- Null Definition에서 ArgumentNullException을 발생시키는지 확인한다.
+- 전달한 duration을 그대로 Duration과 RemainingTime에 저장하는지 확인한다.
+- StackCount 1인지 확인한다.
+- IsPerishable true인지 확인한다.
+
+7.5. 범위 제한
+- 시간 반올림이나 최소값 보정이 조기 구현되지 않았는지 확인한다.
+- NaN 또는 Infinity 검증이 조기 구현되지 않았는지 확인한다.
+- 상태 변경 메서드가 조기 추가되지 않았는지 확인한다.
+- TagContainer 또는 Dictionary 의존성이 없는지 확인한다.
+
+8. InternalsVisibleTo 검수
+- AssemblyInfo.cs가 Runtime 경로에 존재하는지 확인한다.
+- 다음 Assembly만 허용하는지 확인한다.
+-- TagTraitSystem.Tests.EditMode
+- 특성 문자열의 Assembly 이름이 실제 Test Assembly 이름과 정확히 일치하는지 확인한다.
+- 다른 Assembly 접근을 임의로 허용하지 않았는지 확인한다.
+- strong-name public key를 임의로 추가하지 않았는지 확인한다.
+
+9. 테스트 보조 타입 검수
+- TestTagTraitSO가 Test Assembly에만 존재하는지 확인한다.
+- TagTraitSO를 상속하는 concrete class인지 확인한다.
+- Runtime에 포함되지 않았는지 확인한다.
+- 불필요한 메서드, 상태 또는 CreateAssetMenu가 없는지 확인한다.
+
+10. EnumDefinitionTests 검수
+- 각 enum 숫자값을 int 캐스팅으로 검증하는지 확인한다.
+- 다음 테스트 또는 동일 의미의 테스트가 있는지 확인한다.
+-- TagID_Values_AreFixed
+-- TagCategory_Values_AreFixed
+-- StackPolicy_Values_AreFixed
+-- TagChangeReason_Values_AreFixed
+-- ExclusiveGroup_None_IsZero
+- 향후 enum 확장을 막는 전체 멤버 개수 고정 테스트가 없는지 확인한다.
+
+11. TagDefinitionTests 검수
+
+11.1. 객체 생성과 정리
+- ScriptableObject.CreateInstance를 사용하는지 확인한다.
+- TestTagTraitSO도 CreateInstance로 생성하는지 확인한다.
+- TearDown에서 Object.DestroyImmediate로 생성 객체를 정리하는지 확인한다.
+- 프로젝트 에셋을 실제 생성하거나 삭제하지 않는지 확인한다.
+
+11.2. 직렬화 필드 설정
+- SerializedObject와 SerializedProperty를 사용하는지 확인한다.
+- Runtime에 테스트용 setter가 추가되지 않았는지 확인한다.
+- 실제 필드명 문자열과 테스트 코드가 일치하는지 확인한다.
+- ApplyModifiedPropertiesWithoutUndo를 사용하는지 확인한다.
+
+11.3. 테스트 범위
+- 다음 테스트 또는 동일 의미의 검증이 있는지 확인한다.
+-- TagDefinition_DefaultValues_AreExpected
+-- TagDefinition_WhenSerializedFieldsAreSet_PreservesValues
+-- TagDefinition_WhenCreated_HasDefaultMaxStackCountOfOne
+-- TagDefinition_WhenMaxStackCountIsSerialized_ReturnsConfiguredValue
+-- IsKeywordTag_WhenCategoryIsKeyword_ReturnsTrue
+-- IsKeywordTag_WhenCategoryIsNotKeywordAndTraitIsNull_ReturnsFalse
+-- IsKeywordTag_WhenKeywordHasTrait_ReturnsTrue
+- Keyword-Trait 조합을 단계 1에서 차단해야 한다는 잘못된 기대가 없는지 확인한다.
+- MaxStackCount의 Runtime 상한 적용이나 유효성 차단을 단계 1 테스트가 요구하지 않는지 확인한다.
+- SerializedObject의 실제 필드명 (maxStackCount)을 사용하는지 확인한다.
+- TagDefinition의 모든 공개 프로퍼티가 검증되는지 확인한다.
+
+12. TagInstanceTests 검수
+- 다음 테스트 또는 동일 의미의 검증이 있는지 확인한다.
+-- TagInstance_WhenPermanentCreated_InitializesExpectedState
+-- TagInstance_WhenPerishableCreated_InitializesExpectedState
+-- TagInstance_WhenDurationHasUnnormalizedValue_PreservesInput
+-- TagInstance_WhenPermanentDefinitionIsNull_ThrowsArgumentNullException
+-- TagInstance_WhenPerishableDefinitionIsNull_ThrowsArgumentNullException
+- Test Assembly가 internal 생성자에 정상 접근하도록 작성되었는지 정적으로 확인한다.
+- Reflection으로 private setter나 sealed 여부를 과도하게 검증하지 않는지 확인한다.
+- 시간 정규화를 기대하지 않는지 확인한다.
+
+13. 코드 스타일 검수
+- (var)를 사용하지 않았는지 확인한다.
+- BSD 중괄호 스타일을 따르는지 확인한다.
+- private 필드에 밑줄 접두어를 사용하지 않았는지 확인한다.
+- XML 문서 주석은 영어인지 확인한다.
+- 일반 코드 주석은 한글인지 확인한다.
+- 불필요한 #region이 없는지 확인한다.
+- Nullable Reference Type이 도입되지 않았는지 확인한다.
+- 사용하지 않는 using과 경고 가능 코드를 검토한다.
+
+14. 범위 초과 검수
+- 다음 기능이나 타입이 조기 구현되지 않았는지 확인한다.
+-- TagContainer
+-- Dictionary
+-- 조회 API
+-- TagAdd 또는 TagSub
+-- PerishableTagAdd
+-- TagActivate
+-- ITagTrait
+-- TraitContext
+-- Trait 생명주기 메서드
+-- TagChangeEventData
+-- 태그 변경 이벤트
+-- 시간 정규화
+-- StackPolicy 실제 처리
+-- 최대 스택 도달 처리
+-- MaxStackCount 유효성 검사 또는 자동 보정
+-- 오브젝트별 최대 스택 override
+-- TagInstance 최대 스택 복제 상태
+-- Tick 또는 Update
+-- TagDiagnostics
+-- OnValidate
+-- Editor Validator
+-- PlayMode 테스트
+-- Sample 코드
+- 단계 0 환경 테스트가 삭제 또는 변경되지 않았는지 확인한다.
+- 기존 Assembly Definition이나 Package 파일이 불필요하게 수정되지 않았는지 확인한다.
+
+15. 결과 보고 검수
+- 생성 및 수정 파일이 정확히 보고되었는지 확인한다.
+- 추가된 공개 API와 internal 생성자가 보고되었는지 확인한다.
+- 테스트 메서드 목록이 보고되었는지 확인한다.
+- Unity 컴파일을 실제로 확인하지 않았다면 성공으로 보고하지 않았는지 확인한다.
+- 테스트를 실제 실행하지 않았다면 통과했다고 보고하지 않았는지 확인한다.
+- 다음 상태 또는 동일 의미가 포함되어 있는지 확인한다.
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+- 사용자 수동 검증 항목이 명시되어 있는지 확인한다.
+
+16. 사용자 수동 검증 항목
+- Unity Editor에서 프로젝트 컴파일 오류 확인
+- AssemblyInfo의 InternalsVisibleTo 적용 확인
+- SerializedObject를 사용하는 EditMode 테스트 컴파일 확인
+- 단계 0 환경 테스트 회귀 실행
+- EnumDefinitionTests 전체 실행
+- TagDefinitionTests 전체 실행
+- TagInstanceTests 전체 실행
+- CreateAssetMenu에서 TagTraitSystem/Tag Definition 항목 확인
+- TagDefinition 에셋 생성 후 Inspector 필드 노출 확인
+- Inspector에서 Max Stack Count 기본값 1 및 값 변경 저장 확인
+- 이 항목은 AI가 실제 확인했다고 주장하지 않는다.
+
+17. 문제 분류 기준
+
+17.1. 차단 문제
+- enum 숫자값 불일치
+- TagDefinition과 TagInstance 책임 혼합
+- TagDefinition에 현재 StackCount 같은 런타임 상태 필드 추가
+- MaxStackCount 누락, 기본값 불일치 또는 TagDefinition 외부에 원본 저장
+- TagInstance에 MaxStackCount 복제 필드 또는 오브젝트별 override 추가
+- TagInstance public setter 또는 public 생성자 노출
+- IsKeywordTag가 Trait Null 기준으로 구현됨
+- 시간 정규화나 TagContainer 기능 조기 구현
+- Test Assembly가 internal 생성자에 접근할 수 없음
+- 기존 기준 문서 또는 Package 파일 무단 변경
+- 테스트 실행 결과 허위 보고
+
+17.2. 수정 권장 문제
+- 파일 경로 또는 네임스페이스 오타
+- CreateAssetMenu 값 불일치
+- MaxStackCount 전용 테스트 일부 누락
+- XML 주석 또는 코드 스타일 위반
+- 일부 기본값 테스트 누락
+- 불필요한 using 또는 #region
+- 완료 보고 항목 일부 누락
+
+17.3. 사용자 확인 필요
+- Unity 컴파일 결과
+- EditMode 테스트 실행 결과
+- CreateAssetMenu 표시 결과
+- Inspector 직렬화 결과
+- Assembly Definition 참조 및 InternalsVisibleTo 적용 결과
+
+18. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 1 - Enum과 데이터 구조
+
+(차단 문제)
+- 없음 또는 파일 경로, 문제 내용, 영향 범위
+
+(수정 권장 문제)
+- 없음 또는 파일 경로, 문제 내용, 권장 수정
+
+(범위 초과)
+- 없음 또는 조기 구현된 파일과 기능
+
+(Enum 검수)
+- TagID
+- TagCategory
+- StackPolicy
+- TagChangeReason
+- ExclusiveGroup
+
+(TagTraitSO 검수)
+- 선언
+- 상속
+- 단계 범위 준수
+
+(TagDefinition 검수)
+- 필드
+- 프로퍼티
+- MaxStackCount 기본값과 직렬화
+- CreateAssetMenu
+- IsKeywordTag 판정
+- Runtime 상태 분리
+
+(TagInstance 검수)
+- 생성자
+- 초기값
+- MaxStackCount 복제 상태 없음
+- 접근 제한자
+- 시간 정규화 보류
+
+(테스트 검수)
+- EnumDefinitionTests
+- TagDefinitionTests
+- TagInstanceTests
+- TestTagTraitSO
+- Unity Object 정리
+
+(Assembly 내부 접근 검수)
+- AssemblyInfo
+- InternalsVisibleTo
+- Test Assembly 이름 일치
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(사용자 확인 필요)
+- 남은 수동 확인 항목
+
+(단계 완료 판정)
+- AI 작업 완료 가능
+- 사용자 검증 대기
+- 수정 후 재검수 필요
+- 개발 단계 1 최종 완료
+
+(다음 단계 진행 가능 여부)
+- 가능 또는 불가
+- 판단 근거

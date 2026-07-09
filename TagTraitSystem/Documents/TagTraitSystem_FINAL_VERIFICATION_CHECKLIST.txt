@@ -1,0 +1,78 @@
+TagTraitSystem Final Verification Checklist
+
+Code and Compilation
+- [ ] Open the Unity project.
+- [ ] Confirm Console compile errors: 0.
+- [ ] Review unexpected warnings.
+- [ ] Confirm Runtime direct Debug logging exists only inside TagDiagnostics.
+- [ ] Confirm asmdef references:
+  - TagTraitSystem.Runtime references none.
+  - TagTraitSystem.Editor references TagTraitSystem.Runtime.
+  - TagTraitSystem.Samples references TagTraitSystem.Runtime.
+  - TagTraitSystem.Tests.EditMode references Runtime, Editor, and Samples.
+
+EditMode Tests
+- [ ] Environment tests pass.
+- [ ] Runtime unit tests pass.
+- [ ] Trait lifecycle tests pass.
+- [ ] Event tests pass.
+- [ ] Perishable tag tests pass.
+- [ ] Refresh, MaxDuration, and StackCount tests pass.
+- [ ] Diagnostics tests pass.
+- [ ] Editor Validator tests pass.
+- [ ] Integration tests pass.
+- [ ] Sample tests pass.
+- [ ] Record the full EditMode TestRunner result.
+
+Validator Manual Verification
+- [ ] Menu is visible: Tools/TagTraitSystem/Validate Tag Definitions.
+- [ ] Valid assets report 0 errors and 0 warnings.
+- [ ] TagID.None produces an error.
+- [ ] Duplicate TagID produces an error.
+- [ ] Duplicate TagName produces a warning.
+- [ ] Invalid MaxStackCount produces an error.
+- [ ] Validator does not auto-fix assets.
+
+Sample Manual Verification
+- [ ] Add TagContainer and TagTraitSampleController to a GameObject.
+- [ ] Create a SampleLogTraitSO asset.
+- [ ] Create Keyword, Permanent, Refresh, MaxDuration, and StackCount TagDefinition assets.
+- [ ] Confirm context menu commands are visible.
+- [ ] Test Keyword Add, Activate, Remove.
+- [ ] Test Permanent Add, Activate, Remove.
+- [ ] Test Refresh Add, Tick, Add, Expire.
+- [ ] Test MaxDuration Add, Tick, higher extend, lower no-op, Expire.
+- [ ] Test StackCount Add, Tick, Add, Remove, Expire.
+- [ ] Test perishable to permanent conversion.
+- [ ] Confirm autoTick true decreases RemainingTime in Play Mode.
+- [ ] Confirm autoTick false does not automatically decrease RemainingTime.
+- [ ] Confirm event and trait logs appear in Console.
+
+Windows IL2CPP Development Build
+- [ ] Build Target: Windows.
+- [ ] Scripting Backend: IL2CPP.
+- [ ] Development Build enabled.
+- [ ] Build succeeds.
+- [ ] Built player starts.
+- [ ] Runtime assembly is included.
+- [ ] Editor and Test assemblies are excluded.
+- [ ] Sample assembly compiles.
+- [ ] Warning paths behave in Development Build.
+- [ ] No basic scene startup errors.
+
+Documentation Review
+- [ ] TagTraitSystem_README.txt matches code.
+- [ ] TagTraitSystem_PUBLIC_API_REFERENCE.txt matches code.
+- [ ] TagTraitSystem_KNOWN_LIMITATIONS.txt is complete.
+- [ ] TagTraitSystem_CHANGELOG.txt includes only implemented features.
+- [ ] TagTraitSystem_VERSION.txt is exactly 0.1.0.
+- [ ] Samples/README.txt matches current sample scripts.
+
+Final Decision
+- [ ] User confirmed Unity compilation.
+- [ ] User confirmed full EditMode tests.
+- [ ] User confirmed Validator manual checks.
+- [ ] User confirmed Sample manual checks.
+- [ ] User confirmed Windows IL2CPP Development Build.
+- [ ] Remaining issues are documented.
+- [ ] Stage 14 can be marked complete.

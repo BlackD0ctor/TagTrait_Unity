@@ -1,0 +1,193 @@
+유니티 TagTrait 시스템 개발 단계 12-1 검수 프롬프트
+
+0. 문서 식별
+- 개발 단계: 12-1
+- 단계 제목: Runtime TagDiagnostics
+- 프롬프트 종류: 검수 프롬프트
+- 기준 문서:
+-- 수정된 AI 개발 공통 규칙
+-- 개발 단계 12-1 구현 프롬프트
+-- 개발 단계 0~11-2 완료 기록
+-- 개발 단계 12-1 구현 결과 보고
+
+1. 검수 목적
+- Runtime 로그가 TagDiagnostics로 통합되었는지 확인한다.
+- Error와 Warning/Log 출력 조건을 확인한다.
+- 재진입과 Nested Tick Warning이 기존 기능 계약을 바꾸지 않는지 확인한다.
+- 비정상 상태를 보고하되 자동 보정하지 않는지 확인한다.
+- 정상 no-op가 로그 없이 유지되는지 확인한다.
+
+2. 검수 대상
+- Runtime/Diagnostics/TagDiagnostics.cs
+- Runtime/Components/TagContainer.cs
+- Runtime/Core/TagInstance.cs
+- 단계 12-1에서 수정된 모든 Runtime 파일
+- Tests/EditMode/TagDiagnosticsTests.cs
+- Tests/EditMode/TagContainerDiagnosticsTests.cs
+- 구현 결과 보고
+
+3. TagDiagnostics API 검수
+- public static class인가
+- Log/LogWarning/LogError 시그니처가 정확한가
+- UnityEngine.Object context 기본값 null인가
+- 불필요한 overload가 없는가
+- mutable Enabled가 없는가
+- 외부 로깅 프레임워크가 없는가
+
+4. 접두어 및 Context 검수
+- 모든 로그에 [TagTraitSystem] 접두어가 한 번만 붙는가
+- 메시지 본문이 영어인가
+- 전달 Context가 그대로 전달되는가
+- 호출자가 접두어를 중복 삽입하지 않는가
+
+5. 출력 조건 검수
+- Error는 항상 Debug.LogError인가
+- Warning과 Log는 UNITY_EDITOR 또는 DEVELOPMENT_BUILD 조건인가
+- 조건부 컴파일이 TagDiagnostics 내부에 집중되어 있는가
+- 비활성 Warning/Log가 상태나 반환값에 영향을 주지 않는가
+
+6. 기존 직접 로그 교체 검수
+- Runtime TagTraitSystem 파일에서 직접 Debug.LogError가 제거되었는가
+- TagDiagnostics 내부만 직접 Debug 로그를 사용하는가
+- 단계 12 교체 대상 주석이 정리되었는가
+- 교체 과정에서 기존 조건, 반환값, Trait, 이벤트가 바뀌지 않았는가
+
+7. Error 조건 검수
+- Definition null
+- TagID.None
+- 빈 이름
+- Keyword + Trait
+- 비Keyword + Trait null
+- 같은 ID 다른 Definition
+- invalid duration/deltaTime
+- invalid MaxStackCount
+- 서로 다른 duration
+- 비정상 Instance
+- 기존 Error가 Warning으로 낮아지지 않았는가
+
+8. 정상 no-op 무로그 검수
+- 최대치 도달
+- None 중복
+- 영구 태그에 PerishableTagAdd
+- Refresh/MaxDuration 변화 없음
+- 없는 태그 TagSub
+- 정상 Keyword TagActivate
+- Tick 스냅샷 skip
+- 정상 no-op에 Error/Warning이 추가되지 않았는가
+
+9. 재진입 Warning 검수
+- 같은 ID 변경 재진입에서 Warning 한 번인가
+- TagID가 메시지에 포함되는가
+- Context가 Container 또는 gameObject인가
+- false와 상태 무변경인가
+- Trait과 이벤트가 없는가
+- 다른 ID 변경에는 Warning이 없는가
+- 예외 후 가드가 해제되는가
+
+10. Nested Tick Warning 검수
+- nested Tick에서 Warning 한 번인가
+- 현재 Tick이 계속 정상 진행되는가
+- 이중 delta 적용이 없는가
+- 외부 상태가 손상되지 않는가
+- outer Tick 종료 후 isTicking이 해제되는가
+
+11. 비정상 상태 진단 검수
+- Definition null
+- StackCount < 1
+- Duration <= 0
+- Duration/RemainingTime 비유한값
+- RemainingTime < 0
+- invalid maximum
+- StackCount > MaxStackCount
+- 계산 불가능 상태는 해당 항목만 skip하는가
+- 다른 태그 처리는 계속되는가
+
+12. 자동 보정 금지 검수
+- StackCount를 1로 변경하지 않는가
+- 최대치로 clamp하지 않는가
+- Duration을 보정하지 않는가
+- RemainingTime을 보정하지 않는가
+- Diagnostics 목적으로 제거하지 않는가
+- Definition을 수정하지 않는가
+
+13. StackCount 초과 상태 검수
+- Error를 보고하는가
+- 자동 축소하지 않는가
+- 실제 StackCount 기준 Tick이 가능한가
+- TagSub 감소가 가능한가
+- 새 스택 추가만 차단하는가
+
+14. 책임 분리 검수
+- TagDiagnostics가 로그만 담당하는가
+- TagContainer가 검증을 유지하는가
+- TagInstance가 상태 변경을 유지하는가
+- 공개 IsValid/Validate/ValidateAll API가 추가되지 않았는가
+
+15. 기술 부채 검수
+- StackCount Tick 처리 구조 재설계 필요 기록이 유지되는가
+- 단계 12-1에서 지연 큐/트랜잭션/단계 분리를 조기 구현하지 않았는가
+- 순서 의존성을 해결했다고 허위 보고하지 않는가
+
+16. 테스트 검수
+- 접두어
+- LogType
+- Context
+- 기존 Error 통합
+- 정상 no-op 무로그
+- 재진입 Warning
+- Nested Tick Warning
+- 비정상 상태
+- 다른 태그 계속 처리
+- Unity Object TearDown
+
+17. 범위 초과 검수
+- Editor Validator
+- 자동 에셋 검색
+- 자동 수정
+- Custom Inspector
+- 로그 파일
+- mutable 설정
+- Runtime 전체 검색
+- Tick 구조 리팩터링
+- 조기 구현 시 영향 범위 보고
+
+18. 차단 문제
+- Error가 조건부로만 출력
+- 정상 no-op에 Warning/Error
+- 재진입 Warning 때문에 반환값/상태 변경
+- Nested Tick 이중 처리
+- Diagnostics 자동 보정
+- Runtime 직접 Debug 로그 잔존
+- 공개 검증 API 추가
+- StackCount Tick 기술 부채 누락
+- 실행 결과 허위 보고
+
+19. 검수 출력 형식
+
+(검수 대상 단계)
+- 개발 단계 12-1
+
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+
+(TagDiagnostics API)
+(출력 조건)
+(직접 로그 교체)
+(Error 조건)
+(정상 no-op 무로그)
+(재진입 Warning)
+(Nested Tick Warning)
+(비정상 상태 진단)
+(자동 보정 금지)
+(책임 분리)
+(StackCount Tick 기술 부채)
+(테스트 검수)
+(기존 기능 회귀)
+
+(실행 검증 상태)
+- Unity compilation not verified 또는 사용자 확인 결과
+- Test code written, not executed 또는 사용자 실행 결과
+
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

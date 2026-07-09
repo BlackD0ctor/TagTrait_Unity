@@ -1,0 +1,178 @@
+유니티 TagTrait 시스템 개발 단계 9 검수 프롬프트
+
+0. 검수 대상
+- 개발 단계 9 - StackPolicy.MaxDuration
+- Runtime/Core/TagInstance.cs
+- Runtime/Components/TagContainer.cs
+- Tests/EditMode/TagContainerMaxDurationTests.cs
+- 단계 9에서 수정한 기존 테스트
+- 단계 9 구현 결과 보고
+- 단계 0~8 기능 회귀
+
+1. 핵심 계약 검수
+- 개선된 A안을 구현했는가
+- newDuration = max(기존 Duration, 새 정규화 duration)인가
+- Tick 외부 newRemainingTime = max(현재 RemainingTime, 새 duration)인가
+- Tick 내부 newRemainingTime = max(Tick 시작 RemainingTime, 새 duration)인가
+- B안처럼 RemainingTime을 newDuration으로 무조건 복원하지 않는가
+- 90/20/30 예시가 Duration 90, RemainingTime 30으로 끝나는가
+
+2. 실제 연장 성공 조건
+- Duration 또는 comparison RemainingTime이 epsilon보다 실제 증가할 때만 true인가
+- 실제 증가가 없으면 어떤 상태도 변경하지 않는가
+- false, 이벤트 없음, tickModified 미기록인가
+- 동일 값 재적용을 성공 처리하지 않는가
+- Refresh와 MaxDuration의 동일 값 정책이 구분되는가
+
+3. Tick 처리 후 no-op 검수
+- Tick 시작 20, 처리 후 19, 새 duration 10 상황에서 20으로 복원하지 않는가
+- 실제 연장이 없으면 현재 감소 결과 19를 유지하는가
+- 계산값을 무조건 필드에 적용한 뒤 false를 반환하는 잘못된 구현이 없는가
+
+4. TagInstance 내부 API 검수
+- internal MaxDuration 메서드가 있는가
+- IsPerishable false이면 false인가
+- epsilon 기준 실제 증가 여부를 판정하는가
+- 실제 증가 없으면 필드 무변경인가
+- 실제 증가 시 Duration과 RemainingTime만 계산값으로 변경하는가
+- StackCount 유지인가
+- 정규화, Trait, 이벤트, 로그, Dictionary 책임이 없는가
+- TimeEpsilon 상수를 중복 선언하지 않는가
+
+5. tickStartRemainingTimes 검수
+- private readonly Dictionary<TagID, float>인가
+- 외부 노출이 없는가
+- Tick 시작 시 감소 전 RemainingTime을 기록하는가
+- 잘못된 deltaTime에서 기록 또는 상태 변경을 하지 않는가
+- Tick 중 값이 변경되어도 시작 기록을 바꾸지 않는가
+- Tick finally에서 Clear하는가
+- 예외 또는 중간 종료 후 다음 Tick에 기록이 남지 않는가
+
+6. Tick 순서 독립성 검수
+- 연장 입력이 처리 전·후 어느 시점에 와도 같은 최종값인가
+- 처리 전 성공 연장은 tickModifiedTagIDs로 현재 Tick을 건너뛰는가
+- 처리 후 성공 연장은 Tick 시작값을 기준으로 계산하는가
+- 약한 입력이 처리 전이면 정상 Tick 감소가 진행되는가
+- 약한 입력이 처리 후이면 감소 결과를 되돌리지 않는가
+- snapshot 처리 순서에 최종 상태가 의존하지 않는가
+
+7. tickModifiedTagIDs 연동
+- 실제 연장 성공 시에만 기록하는가
+- no-op에는 기록하지 않는가
+- 성공한 ID의 남은 현재 Tick 처리를 건너뛰는가
+- 다음 독립 Tick부터 감소하는가
+- Tick finally에서 기존 정책대로 Clear하는가
+
+8. 이벤트 검수
+- 실제 연장 성공 시 OnTagUpdated 한 번인가
+- Reason.DurationExtendedToMax인가
+- Previous 값은 Tick 시작값이 아니라 API 호출 직전 실제 상태인가
+- Source가 보존되는가
+- 이벤트 콜백에서 연장 상태가 보이는가
+- Added와 Removed는 발생하지 않는가
+- no-op에는 모든 변경 이벤트가 없는가
+- 구독자 예외 후 상태 유지, 다음 구독자, true인가
+
+9. Trait 및 Instance 검수
+- 동일 TagInstance 참조를 유지하는가
+- IsPerishable 유지인가
+- StackCount 유지인가
+- OnAdd/OnRemove/OnActivate 미호출인가
+- 기존 TagScan 얕은 스냅샷에 변경 상태가 보이는가
+
+10. 정책 분기 및 실패 검수
+- 기존 태그 없음은 신규 소멸 추가 경로인가
+- Refresh는 단계 8 정책을 유지하는가
+- None은 false인가
+- StackCount는 단계 11 전까지 false인가
+- 영구 태그는 false인가
+- 같은 ID 다른 Definition은 Error와 false인가
+- 잘못된 duration은 기존 상태를 유지하는가
+- 동일 ID 재진입은 로그 없이 false인가
+
+11. 자기 만료와 재진입
+- 자기 만료 처리 중 MaxDuration 시도가 processingTagIDs로 차단되는가
+- 기존 만료가 계속되는가
+- 다른 ID 콜백에서 적용은 허용되는가
+- Updated 이벤트 종료까지 같은 ID 가드를 유지하는가
+- finally에서 가드가 해제되는가
+
+12. 테스트 검수
+- 90/20/30 핵심 사례
+- 더 긴 입력
+- 더 짧은 입력 no-op
+- 동일 값 no-op
+- 동일 Instance, StackCount, IsPerishable
+- 이벤트 데이터와 Source
+- Trait 미호출
+- 구독자 예외
+- 처리 전·후 Tick 연장
+- 처리 전·후 약한 입력
+- 순서 독립성
+- tickStartRemainingTimes 정리
+- tickModifiedTagIDs 정리
+- 다음 Tick 감소
+- 자기 만료 중 차단
+- TearDown 정리
+
+13. 기존 테스트 변경 검수
+- 단계 8 이전 MaxDuration 임시 실패 테스트를 의도적으로 수정했는가
+- 실제 연장과 no-op을 분리했는가
+- Refresh 테스트를 변경하지 않았는가
+- None과 StackCount 임시 실패를 유지하는가
+- 테스트 삭제 또는 무조건 완화가 없는가
+
+14. 범위 초과
+- B안의 전체 최대 Duration 복원
+- 누적 시간 덧셈
+- 영구/소멸 StackCount
+- 스택별 시간
+- 여러 스택 Tick
+- 영구→소멸
+- Trait 재호출
+- 강제 만료 API
+- 일반 감소 Updated
+- Editor Validator
+- TagDiagnostics
+- 조기 구현 시 차단 문제로 보고한다.
+
+15. 차단 문제 기준
+- 90/20/30이 90/90으로 끝남
+- 실제 연장 없는 입력이 true
+- no-op에서 Updated 발생
+- no-op에서 tickModified 기록으로 Tick 감소 취소
+- Tick 처리 후 약한 입력이 시작 RemainingTime을 복원
+- Tick 시작값 기록이 finally에서 정리되지 않음
+- 처리 순서에 따라 최종 상태가 달라짐
+- 새 Instance 교체
+- Trait 재호출
+- 기존 Refresh 정책 파괴
+- 실행 결과 허위 보고
+
+16. 결과 보고 검수
+- A안 계산식이 보고되었는가
+- Tick 시작값 추적과 no-op 정책이 보고되었는가
+- 수정한 기존 테스트와 이유가 보고되었는가
+- 다음 또는 동일 의미가 있는가
+-- Unity compilation not verified.
+-- Test code written, not executed.
+-- Manual Unity verification required.
+
+17. 검수 출력 형식
+(검수 대상 단계)
+(차단 문제)
+(수정 권장 문제)
+(범위 초과)
+(MaxDuration 계산식 검수)
+(실제 연장 및 no-op 검수)
+(TagInstance 검수)
+(tickStartRemainingTimes 검수)
+(Tick 순서 독립성 검수)
+(tickModifiedTagIDs 검수)
+(이벤트·Trait·재진입 검수)
+(테스트 검수)
+(기존 기능 회귀)
+(실행 검증 상태)
+(사용자 확인 필요)
+(단계 완료 판정)
+(다음 단계 진행 가능 여부)

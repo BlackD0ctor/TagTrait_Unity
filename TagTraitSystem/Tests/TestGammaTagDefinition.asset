@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 809c724a856909f488b8de144a6b8308, type: 3}
+  m_Name: TestGammaTagDefinition
+  m_EditorClassIdentifier: 
+  tagID: 3
+  tagName: 
+  category: 2
+  trait: {fileID: 0}
+  stackPolicy: 3
+  maxStackCount: 2
+  exclusiveGroup: 0
+  priority: 3
+  isSaveable: 0
